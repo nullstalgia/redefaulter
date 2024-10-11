@@ -1,0 +1,11 @@
+[package]
+name = "redefaulter"
+repository = "https://github.com/nullstalgia/redefaulter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = "0.25.2"
+serde = "1.0.210"
+tray-icon = "0.19.0"
+winit = "0.30.5"
