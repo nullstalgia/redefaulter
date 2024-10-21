@@ -1,41 +1,73 @@
-use std::{path::PathBuf, time::Instant};
+use std::{borrow::Borrow, path::PathBuf, time::Instant};
 
 use color_eyre::eyre::Result;
+use policy_config::{IPolicyConfig, PolicyConfig};
+use takeable::Takeable;
+use wasapi::*;
 use windows::{
     core::PWSTR,
     Win32::{
         Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
-        Media::Audio::{
-            eCapture, eRender, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
-        },
+        Media::Audio::*,
         System::Com::{
             CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
             STGM_READ,
         },
     },
 };
-pub struct AudioNightmare {}
-impl AudioNightmare {
-    pub fn init(&self) -> Result<()> {
-        unsafe {
-            CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
-        }
-        Ok(())
-    }
-    pub fn deinit(&self) -> Result<()> {
+use windows_core::w;
+
+use crate::errors::AppResult;
+
+mod policy_config;
+
+pub struct AudioNightmare {
+    /// Interface to query endpoints through
+    device_enumerator: Takeable<IMMDeviceEnumerator>,
+    /// Interface to change endpoints through
+    policy_config: Takeable<IPolicyConfig>,
+}
+impl Drop for AudioNightmare {
+    fn drop(&mut self) {
+        // These need to get dropped first, otherwise the Uninit call will run while they're still in memory
+        // and cause an ACCESS_VIOLATION when it tries
+        self.policy_config.take();
+        self.device_enumerator.take();
         unsafe {
             CoUninitialize();
         }
-        Ok(())
+    }
+}
+impl AudioNightmare {
+    pub fn build() -> Result<Self> {
+        unsafe {
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+        }
+
+        let policy_config: IPolicyConfig =
+            unsafe { CoCreateInstance(&PolicyConfig, None, CLSCTX_ALL) }?;
+        let device_enumerator: IMMDeviceEnumerator =
+            unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }?;
+
+        Ok(Self {
+            policy_config: Takeable::new(policy_config),
+            device_enumerator: Takeable::new(device_enumerator),
+        })
     }
     pub fn event_loop(&mut self) -> Result<()> {
         Ok(())
     }
+    pub fn set_device_test(&mut self) -> AppResult<()> {
+        let id = "{0.0.0.00000000}.{1e9628d3-7e6c-4979-80f0-46122c6a8ab6}";
+        let id = id.to_wide();
+        for role in [eConsole, eMultimedia, eCommunications] {
+            unsafe { self.policy_config.SetDefaultEndpoint(id.as_pwstr(), role) }?;
+        }
+        Ok(())
+    }
     pub fn print_devices(&self) -> Result<()> {
-        let audio_endpoint_enumerator: IMMDeviceEnumerator =
-            unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }?;
-        let devices =
-            unsafe { audio_endpoint_enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) }?;
+        let enumerator = self.device_enumerator.borrow();
+        let devices = unsafe { enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) }?;
         let count = unsafe { devices.GetCount() }? as usize;
         for i in 0..count {
             let device = unsafe { devices.Item(i as u32)? };
@@ -147,5 +179,36 @@ fn pwstr_eq(a: PWSTR, b: PWSTR) -> bool {
             return true;
         }
         offset += 1;
+    }
+}
+
+// Yoinked from https://gist.github.com/dgellow/fb85229ee8aeabf3844a5f3d38eb445d
+
+#[derive(Default)]
+pub struct WideString(pub Vec<u16>);
+
+pub trait ToWide {
+    fn to_wide(&self) -> WideString;
+}
+
+impl ToWide for &str {
+    fn to_wide(&self) -> WideString {
+        let mut result: Vec<u16> = self.encode_utf16().collect();
+        result.push(0);
+        WideString(result)
+    }
+}
+
+impl ToWide for String {
+    fn to_wide(&self) -> WideString {
+        let mut result: Vec<u16> = self.encode_utf16().collect();
+        result.push(0);
+        WideString(result)
+    }
+}
+
+impl WideString {
+    pub fn as_pwstr(&self) -> PWSTR {
+        PWSTR(self.0.as_ptr() as *mut _)
     }
 }
