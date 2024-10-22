@@ -1,7 +1,11 @@
-use std::{borrow::Borrow, path::PathBuf, time::Instant};
+use std::{
+    collections::BTreeMap,
+    sync::mpsc::{self, Receiver},
+    time::Instant,
+};
 
 use color_eyre::eyre::Result;
-use policy_config::{IPolicyConfig, PolicyConfig};
+use serde::{Deserialize, Serialize};
 use takeable::Takeable;
 use wasapi::*;
 use windows::{
@@ -15,10 +19,18 @@ use windows::{
         },
     },
 };
-use windows_core::w;
 
-use crate::errors::AppResult;
+use crate::{
+    errors::{AppResult, RedefaulterError},
+    profiles::AppOverride,
+};
 
+use device_notifications::{NotificationCallbacks, WindowsAudioNotification};
+use policy_config::{IPolicyConfig, PolicyConfig};
+
+use super::AudioDevice;
+
+mod device_notifications;
 mod policy_config;
 
 pub struct AudioNightmare {
@@ -26,20 +38,30 @@ pub struct AudioNightmare {
     device_enumerator: Takeable<IMMDeviceEnumerator>,
     /// Interface to change endpoints through
     policy_config: Takeable<IPolicyConfig>,
+    ///
+    device_callbacks: Takeable<NotificationCallbacks>,
+    /// Notifications from Windows about updates to audio endpoints
+    callback_rx: Receiver<WindowsAudioNotification>,
+    /// Existing devices attached to the host
+    playback_devices: BTreeMap<String, WindowsAudioDevice>,
+    /// Existing devices attached to the host
+    recording_devices: BTreeMap<String, WindowsAudioDevice>,
 }
 impl Drop for AudioNightmare {
     fn drop(&mut self) {
         // These need to get dropped first, otherwise the Uninit call will run while they're still in memory
         // and cause an ACCESS_VIOLATION when it tries
         self.policy_config.take();
-        self.device_enumerator.take();
+        let device_enumerator = self.device_enumerator.take();
+        let callbacks = self.device_callbacks.take();
+        let _ = callbacks.unregister_to_enumerator(&device_enumerator);
         unsafe {
             CoUninitialize();
         }
     }
 }
 impl AudioNightmare {
-    pub fn build() -> Result<Self> {
+    pub fn build() -> AppResult<Self> {
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
         }
@@ -49,10 +71,68 @@ impl AudioNightmare {
         let device_enumerator: IMMDeviceEnumerator =
             unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }?;
 
+        let (tx, rx) = mpsc::channel();
+
+        let device_callbacks = NotificationCallbacks::new(&tx);
+
+        let mut playback_devices = BTreeMap::new();
+        let mut recording_devices = BTreeMap::new();
+
+        let initial_playback = DeviceCollection::new(&Direction::Render)
+            .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+
+        for device in &initial_playback {
+            let device = device.expect("Couldn't get device");
+            let human_name = device
+                .get_friendlyname()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+            let guid = device
+                .get_id()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+            let listing = WindowsAudioDevice {
+                human_name,
+                guid: guid.clone(),
+            };
+            playback_devices.insert(guid, listing);
+        }
+
+        println!("{playback_devices:#?}");
+
+        let initial_recording = DeviceCollection::new(&Direction::Capture)
+            .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+
+        for device in &initial_recording {
+            let device = device.expect("Couldn't get device");
+            let human_name = device
+                .get_friendlyname()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+            let guid = device
+                .get_id()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+            let listing = WindowsAudioDevice {
+                human_name,
+                guid: guid.clone(),
+            };
+            recording_devices.insert(guid, listing);
+        }
+
+        println!("{recording_devices:#?}");
+
+        device_callbacks.register_to_enumerator(&device_enumerator)?;
+
         Ok(Self {
             policy_config: Takeable::new(policy_config),
             device_enumerator: Takeable::new(device_enumerator),
+            device_callbacks: Takeable::new(device_callbacks),
+            callback_rx: rx,
+            playback_devices,
+            recording_devices,
         })
+    }
+    pub fn print_one_audio_event(&mut self) -> Result<()> {
+        let notif = self.callback_rx.recv()?;
+        println!("Notification: {:?}", notif);
+        Ok(())
     }
     pub fn event_loop(&mut self) -> Result<()> {
         Ok(())
@@ -65,8 +145,16 @@ impl AudioNightmare {
         }
         Ok(())
     }
+    pub fn set_device_role(&mut self, device_id: &str, role: &Role) -> AppResult<()> {
+        let wide_id = device_id.to_wide();
+        unsafe {
+            self.policy_config
+                .SetDefaultEndpoint(wide_id.as_pwstr(), role.to_owned().into())
+        }?;
+        Ok(())
+    }
     pub fn print_devices(&self) -> Result<()> {
-        let enumerator = self.device_enumerator.borrow();
+        let enumerator = self.device_enumerator.as_ref();
         let devices = unsafe { enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) }?;
         let count = unsafe { devices.GetCount() }? as usize;
         for i in 0..count {
@@ -127,20 +215,27 @@ impl AudioNightmare {
     }
 }
 
-enum DeviceType {
-    Playback,
-    Recording,
-}
-
 // Maybe I need to have one for a detected device vs a desired device
 // A desired device won't always be connected to the machine.
-struct WindowsAudioDevice {
-    device_type: DeviceType,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowsAudioDevice {
+    // #[serde(skip)]
+    // device_type: Direction,
     human_name: String,
     guid: String,
 }
 
-struct DeviceSet {
+impl AudioDevice for WindowsAudioDevice {
+    fn guid(&self) -> &str {
+        self.guid.as_str()
+    }
+    fn human_name(&self) -> &str {
+        self.human_name.as_str()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceSet {
     playback: WindowsAudioDevice,
     playback_comms: WindowsAudioDevice,
     recording: WindowsAudioDevice,
@@ -150,12 +245,6 @@ struct DeviceSet {
 struct Config {
     unify_communications_devices: bool,
     desired_set: DeviceSet,
-}
-
-struct AppOverride {
-    priority: usize,
-    process_path: PathBuf,
-    override_set: DeviceSet,
 }
 
 struct AppContext {
