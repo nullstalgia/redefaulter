@@ -213,6 +213,35 @@ impl AudioNightmare {
         }
         Ok(())
     }
+    fn add_endpoint(&mut self, id: &str) {
+        todo!()
+    }
+    fn remove_endpoint(&mut self, id: &str) {
+        if self.playback_devices.remove(id).is_none() {
+            self.recording_devices.remove(id);
+        }
+        todo!()
+    }
+    fn handle_endpoint_notification(&mut self, notif: WindowsAudioNotification) {
+        use WindowsAudioNotification::*;
+        match notif {
+            DeviceAdded { id } => self.add_endpoint(&id),
+            DeviceRemoved { id } => self.remove_endpoint(&id),
+            DeviceStateChanged { id, state } => match state.0 {
+                // https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-state-xxx-constants
+                // ACTIVE
+                0x1 => self.add_endpoint(&id),
+                // DISABLED | NOTPRESENT | UNPLUGGED
+                0x2 | 0x4 | 0x8 => self.remove_endpoint(&id),
+                _ => {
+                    panic!("Got unexpected state from DeviceStateChanged!")
+                }
+            },
+            DefaultDeviceChanged { id, flow, role } => {}
+            PropertyValueChanged => {}
+            VolumeChanged => {}
+        }
+    }
 }
 
 // Maybe I need to have one for a detected device vs a desired device

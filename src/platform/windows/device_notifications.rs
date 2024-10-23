@@ -44,7 +44,7 @@ pub enum WindowsAudioNotification {
     },
     DeviceStateChanged {
         id: String,
-        state: u32,
+        state: DEVICE_STATE,
     },
     PropertyValueChanged {
         id: String,
@@ -78,7 +78,7 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
                     id: pwstrdeviceid
                         .to_string()
                         .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
-                    state: dwnewstate.0,
+                    state: dwnewstate,
                 })
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }

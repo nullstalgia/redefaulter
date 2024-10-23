@@ -1,9 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{
-    errors::AppResult,
-    platform::{AudioNightmare, WindowsAudioDevice},
-};
+use crate::{errors::AppResult, platform::AudioNightmare};
 
 pub struct App {
     nightmare: AudioNightmare,
