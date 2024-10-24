@@ -10,4 +10,6 @@ pub enum RedefaulterError {
     WindowsCore(#[from] windows_core::Error),
     #[error("Failed to get device info")]
     FailedToGetInfo,
+    #[error("WMI Error: {0}")]
+    Wmi(#[from] wmi::WMIError),
 }

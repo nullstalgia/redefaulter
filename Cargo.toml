@@ -21,6 +21,7 @@ serde_derive = "1.0.210"
 toml = "0.8.19"
 thiserror = "1.0.64"
 windows-result = "0.2.0"
+wmi = "0.14.0"
 
 [dependencies.windows]
 version = "0.57.0"
