@@ -18,7 +18,19 @@ use color_eyre::eyre::Result;
 
 pub fn run(args: TopLevelCmd) -> Result<()> {
     panic_handler::initialize_panic_handler()?;
+
     let mut platform = AudioNightmare::build()?;
+
+    if let Some(subcommand) = args.subcommand {
+        match subcommand {
+            args::SubCommands::List(categories) => {
+                platform.print_devices(categories);
+            }
+            args::SubCommands::Tui(_) => {}
+        }
+
+        return Ok(());
+    }
 
     use std::thread;
 

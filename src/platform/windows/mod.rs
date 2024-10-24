@@ -21,6 +21,7 @@ use windows::{
 };
 
 use crate::{
+    args::ListSubcommand,
     errors::{AppResult, RedefaulterError},
     profiles::AppOverride,
 };
@@ -96,7 +97,7 @@ impl AudioNightmare {
             playback_devices.insert(guid, listing);
         }
 
-        println!("{playback_devices:#?}");
+        // println!("{playback_devices:#?}");
 
         let initial_recording = DeviceCollection::new(&Direction::Capture)
             .map_err(|_| RedefaulterError::FailedToGetInfo)?;
@@ -116,7 +117,7 @@ impl AudioNightmare {
             recording_devices.insert(guid, listing);
         }
 
-        println!("{recording_devices:#?}");
+        // println!("{recording_devices:#?}");
 
         device_callbacks.register_to_enumerator(&device_enumerator)?;
 
@@ -153,65 +154,48 @@ impl AudioNightmare {
         }?;
         Ok(())
     }
-    pub fn print_devices(&self) -> Result<()> {
-        let enumerator = self.device_enumerator.as_ref();
-        let devices = unsafe { enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) }?;
-        let count = unsafe { devices.GetCount() }? as usize;
-        for i in 0..count {
-            let device = unsafe { devices.Item(i as u32)? };
-            println!("{device:#?}");
-
-            let device_id = unsafe { device.GetId() }?;
-            let mut device_name_buffer = unsafe {
-                device
-                    .OpenPropertyStore(STGM_READ)?
-                    .GetValue(&PKEY_Device_FriendlyName)?
+    pub fn print_devices(&self, categories: ListSubcommand) {
+        let max_len = self
+            .playback_devices
+            .iter()
+            .chain(self.recording_devices.iter())
+            .map(|device| device.1.human_name.len())
+            .max()
+            .unwrap_or(0);
+        let (playback, recording) = {
+            // If neither specified, do both
+            if !categories.playback && !categories.recording {
+                (true, true)
+            } else {
+                (categories.playback, categories.recording)
             }
-            .to_string()
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect::<Vec<u16>>();
-            let device_name = PWSTR(device_name_buffer.as_mut_ptr());
-            println!("{}", unsafe { device_name.display() });
-            // let device_is_default = match default_endpoint_id {
-            //     Some(id) => pwstr_eq(device_id, id),
-            //     _ => false,
-            // };
-            // let mut menu_audio_endpoints: Vec<PWSTR> = Vec::new();
-            // let mut found = false;
-            // for j in i..menu_audio_endpoints.len() {
-            //     // if pwstr_eq(device_id, menu_audio_endpoints[i]) {
-            //     //     found = true;
-            //     //     for _ in 0..(j - i) {
-            //     //         unsafe {
-            //     //             CoTaskMemFree(Some(menu_audio_endpoints.remove(i).0 as *const c_void));
-            //     //             RemoveMenu(menu, i as u32, MF_BYPOSITION)?;
-            //     //         }
-            //     //     }
-            //     //     unsafe {
-            //     //         SetMenuItemInfoW(
-            //     //             menu,
-            //     //             i as u32,
-            //     //             true,
-            //     //             &MENUITEMINFOW {
-            //     //                 cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
-            //     //                 fMask: MIIM_ID | MIIM_STATE | MIIM_STRING,
-            //     //                 fState: if device_is_default {
-            //     //                     MFS_CHECKED
-            //     //                 } else {
-            //     //                     MFS_UNCHECKED
-            //     //                 },
-            //     //                 wID: i as u32,
-            //     //                 dwTypeData: device_name,
-            //     //                 ..Default::default()
-            //     //             },
-            //     //         )?;
-            //     //     }
-            //     //     break;
-            //     // }
-            // }
+        };
+        if playback {
+            println!("Playback devices: ");
+            for device in &self.playback_devices {
+                println!(
+                    "{:<width$} - {}",
+                    device.1.human_name,
+                    device.1.guid,
+                    width = max_len
+                );
+            }
         }
-        Ok(())
+        if recording {
+            if playback {
+                println!("----------");
+            }
+            println!("Recording devices: ");
+
+            for device in &self.recording_devices {
+                println!(
+                    "{:<width$} - {}",
+                    device.1.human_name,
+                    device.1.guid,
+                    width = max_len
+                );
+            }
+        }
     }
     fn add_endpoint(&mut self, id: &str) {
         todo!()
@@ -237,9 +221,9 @@ impl AudioNightmare {
                     panic!("Got unexpected state from DeviceStateChanged!")
                 }
             },
-            DefaultDeviceChanged { id, flow, role } => {}
-            PropertyValueChanged => {}
-            VolumeChanged => {}
+            DefaultDeviceChanged { id, flow, role } => todo!(),
+            PropertyValueChanged => unimplemented!(),
+            VolumeChanged => unimplemented!(),
         }
     }
 }
