@@ -12,4 +12,10 @@ pub enum RedefaulterError {
     FailedToGetInfo,
     #[error("WMI Error: {0}")]
     Wmi(#[from] wmi::WMIError),
+    #[error("IO Error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("TOML Serialization Error: {0}")]
+    TomlSer(#[from] toml::ser::Error),
+    #[error("TOML Deserialization Error: {0}")]
+    TomlDe(#[from] toml::de::Error),
 }

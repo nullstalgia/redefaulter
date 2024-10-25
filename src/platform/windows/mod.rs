@@ -5,7 +5,7 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use takeable::Takeable;
 use wasapi::*;
 use windows::{
@@ -32,6 +32,7 @@ use policy_config::{IPolicyConfig, PolicyConfig};
 use super::AudioDevice;
 
 mod device_notifications;
+mod device_ser;
 mod policy_config;
 
 pub struct AudioNightmare {
@@ -56,9 +57,10 @@ impl Drop for AudioNightmare {
         let device_enumerator = self.device_enumerator.take();
         let callbacks = self.device_callbacks.take();
         let _ = callbacks.unregister_to_enumerator(&device_enumerator);
-        unsafe {
-            CoUninitialize();
-        }
+        // https://github.com/microsoft/windows-rs/issues/1169#issuecomment-926877227
+        // unsafe {
+        //     CoUninitialize();
+        // }
     }
 }
 impl AudioNightmare {
@@ -107,6 +109,7 @@ impl AudioNightmare {
             let human_name = device
                 .get_friendlyname()
                 .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+            // let device_name = device.get_interface_friendlyname()
             let guid = device
                 .get_id()
                 .map_err(|_| RedefaulterError::FailedToGetInfo)?;
@@ -155,13 +158,6 @@ impl AudioNightmare {
         Ok(())
     }
     pub fn print_devices(&self, categories: ListSubcommand) {
-        let max_len = self
-            .playback_devices
-            .iter()
-            .chain(self.recording_devices.iter())
-            .map(|device| device.1.human_name.len())
-            .max()
-            .unwrap_or(0);
         let (playback, recording) = {
             // If neither specified, do both
             if !categories.playback && !categories.recording {
@@ -170,6 +166,39 @@ impl AudioNightmare {
                 (categories.playback, categories.recording)
             }
         };
+        if categories.profile_format {
+            self.print_profile_format(playback, recording);
+        } else {
+            self.print_human_readable(playback, recording);
+        }
+    }
+    fn print_profile_format(&self, playback: bool, recording: bool) {
+        if playback {
+            println!("Playback devices: ");
+            for device in &self.playback_devices {
+                println!("{}", device.1.profile_format());
+            }
+        }
+        if recording {
+            if playback {
+                println!("----------");
+            }
+            println!("Recording devices: ");
+
+            for device in &self.recording_devices {
+                println!("{}", device.1.profile_format());
+            }
+        }
+    }
+    fn print_human_readable(&self, playback: bool, recording: bool) {
+        let max_len = self
+            .playback_devices
+            .iter()
+            .chain(self.recording_devices.iter())
+            .map(|device| device.1.human_name.len())
+            .max()
+            .unwrap_or(0);
+
         if playback {
             println!("Playback devices: ");
             for device in &self.playback_devices {
@@ -217,20 +246,32 @@ impl AudioNightmare {
                 0x1 => self.add_endpoint(&id),
                 // DISABLED | NOTPRESENT | UNPLUGGED
                 0x2 | 0x4 | 0x8 => self.remove_endpoint(&id),
-                _ => {
-                    panic!("Got unexpected state from DeviceStateChanged!")
-                }
+                _ => panic!("Got unexpected state from DeviceStateChanged!"),
             },
             DefaultDeviceChanged { id, flow, role } => todo!(),
             PropertyValueChanged => unimplemented!(),
             VolumeChanged => unimplemented!(),
         }
     }
+    /// Gets device by name, ignoring any numeric prefix added by Windows
+    fn device_by_name_fuzzy(
+        &self,
+        direction: &Direction,
+        name: &str,
+    ) -> Option<&WindowsAudioDevice> {
+        todo!()
+    }
+    fn device_by_guid(&self, direction: &Direction, guid: &str) -> Option<&WindowsAudioDevice> {
+        match direction {
+            Direction::Render => self.playback_devices.get(guid),
+            Direction::Capture => self.recording_devices.get(guid),
+        }
+    }
 }
 
 // Maybe I need to have one for a detected device vs a desired device
 // A desired device won't always be connected to the machine.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct WindowsAudioDevice {
     // #[serde(skip)]
     // device_type: Direction,
@@ -245,13 +286,23 @@ impl AudioDevice for WindowsAudioDevice {
     fn human_name(&self) -> &str {
         self.human_name.as_str()
     }
+    fn profile_format(&self) -> String {
+        // So I can't use the toml serializer on the raw device since I think it expects a key/value,
+        // and JSON lets me output just the string as is.
+        serde_json::to_string(self).expect("Failed to serialize profile")
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeviceSet {
+    // #[serde(with = "serde_windows_audio_device")]
+    #[serde(default)]
     playback: WindowsAudioDevice,
+    #[serde(default)]
     playback_comms: WindowsAudioDevice,
+    #[serde(default)]
     recording: WindowsAudioDevice,
+    #[serde(default)]
     recording_comms: WindowsAudioDevice,
 }
 

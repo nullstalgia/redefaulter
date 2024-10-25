@@ -17,4 +17,5 @@ pub use windows::WindowsAudioDevice;
 pub trait AudioDevice {
     fn guid(&self) -> &str;
     fn human_name(&self) -> &str;
+    fn profile_format(&self) -> String;
 }

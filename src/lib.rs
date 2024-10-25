@@ -12,9 +12,10 @@ pub mod errors;
 use std::{sync::mpsc, time::Duration};
 
 use args::TopLevelCmd;
-use platform::AudioNightmare;
+use platform::{AudioNightmare, WindowsAudioDevice};
 
 use color_eyre::eyre::Result;
+use profiles::Profiles;
 
 pub fn run(args: TopLevelCmd) -> Result<()> {
     panic_handler::initialize_panic_handler()?;
@@ -32,25 +33,34 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         return Ok(());
     }
 
-    use std::thread;
+    let profiles_path = std::env::current_exe()?
+        .parent()
+        .expect("Exe has no parent dir?")
+        .join("profiles");
 
-    let (process_tx, process_rx) = mpsc::channel();
+    let profiles = Profiles::build(&profiles_path)?;
 
-    let thread_join_handle = thread::spawn(move || processes::process_event_loop(process_tx));
+    println!("{profiles:#?}");
 
-    let mut i = 0;
-    while let Ok(item) = process_rx.recv() {
-        println!("{item:#?}");
+    // use std::thread;
 
-        i = i + 1;
-        if i == 5 {
-            break;
-        }
-    }
+    // let (process_tx, process_rx) = mpsc::channel();
 
-    std::mem::drop(process_rx);
-    println!("dropped");
-    let res = thread_join_handle.join();
+    // let thread_join_handle = thread::spawn(move || processes::process_event_loop(process_tx));
+
+    // let mut i = 0;
+    // while let Ok(item) = process_rx.recv() {
+    //     println!("{item:#?}");
+
+    //     i = i + 1;
+    //     if i == 5 {
+    //         break;
+    //     }
+    // }
+
+    // std::mem::drop(process_rx);
+    // println!("dropped");
+    // let res = thread_join_handle.join();
 
     // platform.print_devices()?;
     // platform.set_device_test()?;
