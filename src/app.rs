@@ -1,15 +1,17 @@
 use std::collections::BTreeMap;
 
-use crate::{errors::AppResult, platform::AudioNightmare};
+use crate::{errors::AppResult, platform::AudioNightmare, profiles::Profiles};
 
 pub struct App {
-    nightmare: AudioNightmare,
+    endpoints: AudioNightmare,
+    profiles: Profiles,
 }
 
 impl App {
     pub fn build() -> AppResult<Self> {
         Ok(Self {
-            nightmare: AudioNightmare::build()?,
+            endpoints: AudioNightmare::build()?,
+            profiles: Profiles::build()?,
         })
     }
 }

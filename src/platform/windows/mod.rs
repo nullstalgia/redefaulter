@@ -5,6 +5,7 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
+use regex_lite::Regex;
 use serde::{Deserialize, Deserializer, Serialize};
 use takeable::Takeable;
 use wasapi::*;
@@ -40,14 +41,16 @@ pub struct AudioNightmare {
     device_enumerator: Takeable<IMMDeviceEnumerator>,
     /// Interface to change endpoints through
     policy_config: Takeable<IPolicyConfig>,
-    ///
+    /// Client object for endpoint notifications from Windows
     device_callbacks: Takeable<NotificationCallbacks>,
-    /// Notifications from Windows about updates to audio endpoints
+    /// Channel for notifications for audio endpoint events
     callback_rx: Receiver<WindowsAudioNotification>,
     /// Existing devices attached to the host
     playback_devices: BTreeMap<String, WindowsAudioDevice>,
     /// Existing devices attached to the host
     recording_devices: BTreeMap<String, WindowsAudioDevice>,
+    /// Regex for fuzzy-matching devices with numeric prefixes
+    regex: Regex,
 }
 impl Drop for AudioNightmare {
     fn drop(&mut self) {
@@ -124,6 +127,10 @@ impl AudioNightmare {
 
         device_callbacks.register_to_enumerator(&device_enumerator)?;
 
+        // This regex matches an opening parenthesis '(', followed by one or more digits '\d+',
+        // a dash '-', a space ' ', and captures the rest of the string '(.+?)' until the closing parenthesis.
+        let regex = Regex::new(r"\(\d+- (.+?)\)").expect("Regex failed to build");
+
         Ok(Self {
             policy_config: Takeable::new(policy_config),
             device_enumerator: Takeable::new(device_enumerator),
@@ -131,6 +138,7 @@ impl AudioNightmare {
             callback_rx: rx,
             playback_devices,
             recording_devices,
+            regex,
         })
     }
     pub fn print_one_audio_event(&mut self) -> Result<()> {
@@ -249,17 +257,31 @@ impl AudioNightmare {
                 _ => panic!("Got unexpected state from DeviceStateChanged!"),
             },
             DefaultDeviceChanged { id, flow, role } => todo!(),
-            PropertyValueChanged => unimplemented!(),
-            VolumeChanged => unimplemented!(),
         }
     }
     /// Gets device by name, ignoring any numeric prefix added by Windows
-    fn device_by_name_fuzzy(
-        &self,
+    pub fn device_by_name_fuzzy<'a>(
+        &'a self,
         direction: &Direction,
         name: &str,
-    ) -> Option<&WindowsAudioDevice> {
-        todo!()
+    ) -> Option<&'a WindowsAudioDevice> {
+        if name.is_empty() {
+            return None;
+        }
+        let find =
+            |map: &'a BTreeMap<String, WindowsAudioDevice>| -> Option<&'a WindowsAudioDevice> {
+                for (_, device) in map {
+                    let simplified_name = self.regex.replace(&device.human_name, "($1)");
+                    if name == device.human_name || name == simplified_name {
+                        return Some(device);
+                    }
+                }
+                None
+            };
+        match direction {
+            Direction::Render => find(&self.playback_devices),
+            Direction::Capture => find(&self.recording_devices),
+        }
     }
     fn device_by_guid(&self, direction: &Direction, guid: &str) -> Option<&WindowsAudioDevice> {
         match direction {
@@ -288,7 +310,7 @@ impl AudioDevice for WindowsAudioDevice {
     }
     fn profile_format(&self) -> String {
         // So I can't use the toml serializer on the raw device since I think it expects a key/value,
-        // and JSON lets me output just the string as is.
+        // but JSON lets me output just the string as is.
         serde_json::to_string(self).expect("Failed to serialize profile")
     }
 }

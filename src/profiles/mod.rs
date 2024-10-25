@@ -22,14 +22,17 @@ pub struct Profiles {
     pub profiles: BTreeMap<OsString, AppOverride>,
 }
 
+const PROFILES_PATH: &str = "profiles";
+
 impl Profiles {
-    pub fn build(dir: &Path) -> AppResult<Self> {
+    pub fn build() -> AppResult<Self> {
+        let dir = PathBuf::from(PROFILES_PATH);
         let mut profiles = Profiles {
             profiles: BTreeMap::new(),
         };
 
         if dir.exists() {
-            profiles.load_from_dir(dir)?;
+            profiles.load_from_dir(&dir)?;
         }
 
         Ok(profiles)

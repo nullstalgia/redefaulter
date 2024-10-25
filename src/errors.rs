@@ -18,4 +18,7 @@ pub enum RedefaulterError {
     TomlSer(#[from] toml::ser::Error),
     #[error("TOML Deserialization Error: {0}")]
     TomlDe(#[from] toml::de::Error),
+    // My errors
+    #[error("Failed to get working directory")]
+    WorkDir,
 }
