@@ -1,3 +1,5 @@
+#![deny(unused_must_use)]
+
 mod app;
 mod panic_handler;
 mod platform;
@@ -10,7 +12,7 @@ mod tray_menu;
 pub mod args;
 pub mod errors;
 
-use app::App;
+use app::{App, CustomEvent};
 use args::TopLevelCmd;
 use dashmap::DashMap;
 use errors::RedefaulterError;
@@ -22,19 +24,58 @@ use std::time::{Duration, Instant};
 use color_eyre::eyre::Result;
 use profiles::Profiles;
 
+use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
+use tracing::info;
+use tracing_subscriber::{filter, prelude::*};
+use tracing_subscriber::{fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt};
+
+use tao::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoopBuilder},
+};
+
 pub fn run(args: TopLevelCmd) -> Result<()> {
     panic_handler::initialize_panic_handler()?;
-    // TODO init logging
     let working_directory = determine_working_directory().ok_or(RedefaulterError::WorkDir)?;
     if !working_directory.exists() {
         fs_err::create_dir(&working_directory)?;
     }
     std::env::set_current_dir(&working_directory).expect("Failed to change working directory");
+    let log_name = std::env::current_exe()?
+        .with_extension("log")
+        .file_name()
+        .expect("Couldn't build log path!")
+        .to_owned();
+    // let console = console_subscriber::spawn();
+    let file_appender = BasicRollingFileAppender::new(
+        log_name,
+        RollingConditionBasic::new().max_size(1024 * 1024 * 5),
+        2,
+    )
+    .unwrap();
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let time_fmt = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.6f".to_owned());
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking)
+        // .pretty()
+        .with_file(false)
+        .with_ansi(false)
+        .with_target(true)
+        .with_timer(time_fmt)
+        .with_line_number(true)
+        .with_filter(filter::LevelFilter::TRACE);
+    let (fmt_layer, reload_handle) = tracing_subscriber::reload::Layer::new(fmt_layer);
+    let env_filter = tracing_subscriber::EnvFilter::new("trace");
+    tracing_subscriber::registry()
+        // .with(console)
+        .with(env_filter)
+        .with(fmt_layer)
+        .init();
 
     if let Some(subcommand) = args.subcommand {
         match subcommand {
             args::SubCommands::List(categories) => {
-                let platform = AudioNightmare::build()?;
+                let platform = AudioNightmare::build(None)?;
                 platform.print_devices(categories);
                 return Ok(());
             }
@@ -42,7 +83,12 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         }
     }
 
-    let app = App::build()?;
+    let event_loop = EventLoopBuilder::<CustomEvent>::with_user_event().build();
+    let event_proxy = event_loop.create_proxy();
+
+    info!("Starting app... v{}", env!("CARGO_PKG_VERSION"));
+
+    let mut app = App::build(event_proxy)?;
 
     let instant_1 = Instant::now();
     println!("{:#?}", app.test());
@@ -51,7 +97,24 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     println!("{:?}", instant_2 - instant_1);
     // println!("{:#?}", app.processes);
 
-    Ok(())
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+
+        match event {
+            Event::UserEvent(event) => {
+                // println!("user event: {event:?}");
+                app.handle_custom_event(event).expect("AAAAAAAAAAA");
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            Event::LoopDestroyed => (),
+            _ => (),
+        }
+    });
+
+    // Ok(())
 }
 
 /// Returns the directory that logs, config, and other files should be placed in by default.

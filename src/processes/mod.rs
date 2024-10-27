@@ -1,3 +1,4 @@
+use crate::app::CustomEvent;
 use crate::errors::{AppResult, RedefaulterError};
 use crate::profiles::AppOverride;
 
@@ -8,6 +9,8 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, sync::mpsc::Sender};
+use tao::event_loop::EventLoopProxy;
+use tracing::trace;
 use wmi::*;
 
 // Inspired by https://users.rust-lang.org/t/watch-for-windows-process-creation-in-rust/98603/2
@@ -37,12 +40,11 @@ impl Process {
         //     self.executable_path, profile.process_path, needs_path
         // );
         match self.executable_path.as_ref() {
-            // Expected an absolute path but none existed
+            // Expecting an absolute path
             None if needs_path => false,
+            Some(path) if needs_path => *path == profile.process_path,
             // If not an absolute path, then see if the name matches
             None => self.name == profile.process_path,
-            // But if we have a path, see if they match
-            Some(path) if needs_path => *path == profile.process_path,
             Some(_) => self.name == profile.process_path,
         }
     }
@@ -89,7 +91,7 @@ impl ProcessWatcher {
 pub fn process_event_loop(
     process_map: Arc<DashMap<u32, Process>>,
     map_updated: Sender<usize>,
-    // tx: Sender<(ProcessEventType, Process)>,
+    event_proxy: EventLoopProxy<CustomEvent>, // tx: Sender<(ProcessEventType, Process)>,
 ) -> AppResult<()> {
     let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
 
@@ -125,18 +127,23 @@ pub fn process_event_loop(
                 match class.as_str() {
                     "__InstanceCreationEvent" => {
                         let process = wbem_class_obj.into_desr::<ProcessEvent>()?.target_instance;
+                        trace!("New process: {process:?}");
                         process_map.insert(process.process_id, process);
                     }
                     "__InstanceDeletionEvent" => {
                         let process = wbem_class_obj.into_desr::<ProcessEvent>()?.target_instance;
+                        trace!("Closed process: {process:?}");
                         process_map.remove(&process.process_id);
                     }
                     // "__InstanceModificationEvent" => Modified,
                     _ => Err(WMIError::InvalidDeserializationVariantError(class))?,
                 };
-                map_updated
-                    .send(process_map.len())
-                    .map_err(|_| RedefaulterError::ProcessUpdate)?;
+                // map_updated
+                //     .send(process_map.len())
+                //     .map_err(|_| RedefaulterError::ProcessUpdate)?;
+                event_proxy
+                    .send_event(CustomEvent::ProcessesChanged)
+                    .map_err(|_| RedefaulterError::EventLoopClosed)?;
             }
             Err(e) => Err(e)?,
         }

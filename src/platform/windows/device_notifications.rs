@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use std::sync::mpsc::Sender;
+use tao::event_loop::EventLoopProxy;
 use wasapi::{Direction, Role};
 use windows::{
     core::{implement, PCWSTR},
@@ -15,7 +16,7 @@ use windows::{
     },
 };
 
-use crate::errors::AppResult;
+use crate::{app::CustomEvent, errors::AppResult};
 
 fn to_win_error<E: Debug>(e: E, code: WIN32_ERROR) -> windows::core::Error {
     windows::core::Error::new::<String>(code.to_hresult(), format!("{:?}", e).into())
@@ -43,7 +44,8 @@ pub enum WindowsAudioNotification {
 
 #[implement(IMMNotificationClient)]
 #[allow(non_camel_case_types)]
-struct AppEventHandlerClient(Sender<WindowsAudioNotification>);
+// Bit of a circular dependency, not a fan.
+struct AppEventHandlerClient(EventLoopProxy<CustomEvent>);
 
 impl IMMNotificationClient_Impl for AppEventHandlerClient {
     fn OnDeviceStateChanged(
@@ -53,13 +55,18 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
     ) -> windows::core::Result<()> {
         unsafe {
             self.0
-                .send(WindowsAudioNotification::DeviceStateChanged {
-                    id: pwstrdeviceid
-                        .to_string()
-                        .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
-                    state: dwnewstate,
-                })
+                .send_event(CustomEvent::AudioEndpointNotification(
+                    WindowsAudioNotification::DeviceStateChanged {
+                        id: pwstrdeviceid
+                            .to_string()
+                            .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
+                        state: dwnewstate,
+                    },
+                ))
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
+            // self.0
+            //     .send()
+            //     .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }
 
         Ok(())
@@ -68,11 +75,13 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
     fn OnDeviceAdded(&self, pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
         unsafe {
             self.0
-                .send(WindowsAudioNotification::DeviceAdded {
-                    id: pwstrdeviceid
-                        .to_string()
-                        .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
-                })
+                .send_event(CustomEvent::AudioEndpointNotification(
+                    WindowsAudioNotification::DeviceAdded {
+                        id: pwstrdeviceid
+                            .to_string()
+                            .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
+                    },
+                ))
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }
 
@@ -82,11 +91,13 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
     fn OnDeviceRemoved(&self, pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
         unsafe {
             self.0
-                .send(WindowsAudioNotification::DeviceRemoved {
-                    id: pwstrdeviceid
-                        .to_string()
-                        .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
-                })
+                .send_event(CustomEvent::AudioEndpointNotification(
+                    WindowsAudioNotification::DeviceRemoved {
+                        id: pwstrdeviceid
+                            .to_string()
+                            .map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?,
+                    },
+                ))
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }
 
@@ -106,9 +117,10 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
             let flow =
                 Direction::try_from(flow).map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?;
             let role = Role::try_from(role).map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?;
-
             self.0
-                .send(WindowsAudioNotification::DefaultDeviceChanged { id, flow, role })
+                .send_event(CustomEvent::AudioEndpointNotification(
+                    WindowsAudioNotification::DefaultDeviceChanged { id, flow, role },
+                ))
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }
 
@@ -129,8 +141,8 @@ pub(crate) struct NotificationCallbacks {
 }
 
 impl NotificationCallbacks {
-    pub(crate) fn new(tx: &Sender<WindowsAudioNotification>) -> Self {
-        let notification_client = AppEventHandlerClient(tx.clone()).into();
+    pub(crate) fn new(tx: EventLoopProxy<CustomEvent>) -> Self {
+        let notification_client = AppEventHandlerClient(tx).into();
 
         Self {
             notification_client,

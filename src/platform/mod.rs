@@ -1,7 +1,10 @@
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-pub use windows::{AudioNightmare, Config, DeviceSet};
+pub use windows::{
+    device_notifications::WindowsAudioNotification as AudioEndpointNotification, AudioNightmare,
+    Config, DeviceSet,
+};
 
 // I don't plan on doing this, but I'd rather over-engineer a little to prevent either myself
 // or someone else some future pain.

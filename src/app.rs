@@ -10,13 +10,21 @@ use std::{
 };
 
 use dashmap::DashMap;
+use tao::event_loop::EventLoopProxy;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
-    platform::{AudioNightmare, DeviceSet},
+    platform::{AudioEndpointNotification, AudioNightmare, DeviceSet},
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
 };
+
+#[derive(Debug)]
+pub enum CustomEvent {
+    ProcessesChanged,
+    AudioEndpointUpdate,
+    AudioEndpointNotification(AudioEndpointNotification),
+}
 
 pub struct App {
     pub endpoints: AudioNightmare,
@@ -29,17 +37,19 @@ pub struct App {
     // - config'd devices
     // - never taken into account
     pub default_set: DeviceSet,
+    active_profiles: Vec<AppOverride>,
 }
 
 impl App {
-    pub fn build() -> AppResult<Self> {
+    pub fn build(event_proxy: EventLoopProxy<CustomEvent>) -> AppResult<Self> {
         let processes = Arc::new(DashMap::new());
-        let map_clone = Arc::clone(&processes);
-
         let (process_tx, process_rx) = mpsc::channel();
+        let map_clone = Arc::clone(&processes);
+        let proxy_clone = event_proxy.clone();
 
-        let process_watcher_handle =
-            thread::spawn(move || processes::process_event_loop(map_clone, process_tx));
+        let process_watcher_handle = thread::spawn(move || {
+            processes::process_event_loop(map_clone, process_tx, proxy_clone)
+        });
 
         let initial_size =
             process_rx
@@ -53,10 +63,12 @@ impl App {
 
         assert_eq!(initial_size, processes.len());
 
-        let endpoints = AudioNightmare::build()?;
+        let endpoints = AudioNightmare::build(Some(event_proxy))?;
 
         // TODO later this should be the defaults set by the user in the config
         let default_set = endpoints.get_current_defaults()?;
+
+        let active_profiles = Vec::new();
 
         Ok(Self {
             endpoints,
@@ -65,6 +77,7 @@ impl App {
             process_watcher_handle,
             process_rx,
             default_set,
+            active_profiles,
         })
     }
     pub fn determine_active_profiles(&self) -> Vec<AppOverride> {
@@ -108,10 +121,33 @@ impl App {
 
         device_actions
     }
+    fn update_active_profiles(&mut self) {
+        self.active_profiles = self.determine_active_profiles();
+    }
     pub fn test(&self) -> DeviceSet {
-        let active_profiles = self.determine_active_profiles();
-        let need_to_change = self.get_damaged_devices(active_profiles);
+        let need_to_change = self.get_damaged_devices(self.active_profiles.clone());
 
         need_to_change
+    }
+    fn change_devices(&self, new_devices: DeviceSet) -> AppResult<()> {
+        Ok(())
+    }
+    pub fn handle_custom_event(&mut self, event: CustomEvent) -> AppResult<()> {
+        use CustomEvent::*;
+        match event {
+            AudioEndpointNotification(notif) => {
+                self.endpoints.handle_endpoint_notification(notif)?
+            }
+            AudioEndpointUpdate => {
+                //trigger changes
+                self.endpoints.change_devices(self.test())?;
+            }
+            ProcessesChanged => {
+                self.update_active_profiles();
+                //trigger changes
+                self.endpoints.change_devices(self.test())?;
+            }
+        }
+        Ok(())
     }
 }

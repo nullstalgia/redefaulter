@@ -25,4 +25,6 @@ pub enum RedefaulterError {
     WorkDir,
     #[error("Could not trigger process updated event")]
     ProcessUpdate,
+    #[error("Event loop closed")]
+    EventLoopClosed,
 }

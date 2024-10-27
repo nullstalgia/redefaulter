@@ -8,6 +8,7 @@ use color_eyre::eyre::Result;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
+use tao::event_loop::EventLoopProxy;
 use wasapi::*;
 use windows::{
     core::PWSTR,
@@ -16,8 +17,10 @@ use windows::{
         System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED},
     },
 };
+use windows_core::Interface;
 
 use crate::{
+    app::CustomEvent,
     args::ListSubcommand,
     errors::{AppResult, RedefaulterError},
     profiles::AppOverride,
@@ -28,7 +31,7 @@ use policy_config::{IPolicyConfig, PolicyConfig};
 
 use super::AudioDevice;
 
-mod device_notifications;
+pub mod device_notifications;
 mod device_ser;
 mod policy_config;
 
@@ -38,15 +41,17 @@ pub struct AudioNightmare {
     /// Interface to change endpoints through
     policy_config: Takeable<IPolicyConfig>,
     /// Client object for endpoint notifications from Windows
-    device_callbacks: Takeable<NotificationCallbacks>,
+    device_callbacks: Option<NotificationCallbacks>,
     /// Channel for notifications for audio endpoint events
-    callback_rx: Receiver<WindowsAudioNotification>,
+    // callback_rx: Receiver<WindowsAudioNotification>,
     /// Existing devices attached to the host
     playback_devices: BTreeMap<String, WindowsAudioDevice>,
     /// Existing devices attached to the host
     recording_devices: BTreeMap<String, WindowsAudioDevice>,
     /// Regex for fuzzy-matching devices with numeric prefixes
     regex: Regex,
+    /// Used to tell `App` that something has changed
+    event_proxy: Option<EventLoopProxy<CustomEvent>>,
     /// When `true`, *all* actions taken towards the Console/Multimedia Role
     /// will be applied to the Communications Role
     pub unify_communications_devices: bool,
@@ -56,9 +61,10 @@ impl Drop for AudioNightmare {
         // These need to get dropped first, otherwise the Uninit call will run while they're still in memory
         // and cause an ACCESS_VIOLATION when it tries
         self.policy_config.take();
-        let device_enumerator = self.device_enumerator.take();
-        let callbacks = self.device_callbacks.take();
-        let _ = callbacks.unregister_to_enumerator(&device_enumerator);
+        if let Some(callbacks) = self.device_callbacks.take() {
+            let device_enumerator = self.device_enumerator.take();
+            let _ = callbacks.unregister_to_enumerator(&device_enumerator);
+        }
         // https://github.com/microsoft/windows-rs/issues/1169#issuecomment-926877227
         // unsafe {
         //     CoUninitialize();
@@ -66,7 +72,7 @@ impl Drop for AudioNightmare {
     }
 }
 impl AudioNightmare {
-    pub fn build() -> AppResult<Self> {
+    pub fn build(event_proxy: Option<EventLoopProxy<CustomEvent>>) -> AppResult<Self> {
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
         }
@@ -76,9 +82,7 @@ impl AudioNightmare {
         let device_enumerator: IMMDeviceEnumerator =
             unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }?;
 
-        let (tx, rx) = mpsc::channel();
-
-        let device_callbacks = NotificationCallbacks::new(&tx);
+        // let (tx, rx) = mpsc::channel();
 
         let mut playback_devices = BTreeMap::new();
         let mut recording_devices = BTreeMap::new();
@@ -103,7 +107,13 @@ impl AudioNightmare {
 
         // println!("{recording_devices:#?}");
 
-        device_callbacks.register_to_enumerator(&device_enumerator)?;
+        let mut device_callbacks = None;
+
+        if let Some(proxy) = event_proxy.as_ref() {
+            let client = NotificationCallbacks::new(proxy.clone());
+            client.register_to_enumerator(&device_enumerator)?;
+            device_callbacks = Some(client);
+        }
 
         // This regex matches an opening parenthesis '(', followed by one or more digits '\d+',
         // a dash '-', a space ' ', and captures the rest of the string '(.+?)' until the closing parenthesis.
@@ -112,19 +122,20 @@ impl AudioNightmare {
         Ok(Self {
             policy_config: Takeable::new(policy_config),
             device_enumerator: Takeable::new(device_enumerator),
-            device_callbacks: Takeable::new(device_callbacks),
-            callback_rx: rx,
+            device_callbacks,
+            // callback_rx: rx,
             playback_devices,
             recording_devices,
             regex,
-            unify_communications_devices: false,
+            unify_communications_devices: true,
+            event_proxy,
         })
     }
-    pub fn print_one_audio_event(&mut self) -> Result<()> {
-        let notif = self.callback_rx.recv()?;
-        println!("Notification: {:?}", notif);
-        Ok(())
-    }
+    // pub fn print_one_audio_event(&mut self) -> Result<()> {
+    //     let notif = self.callback_rx.recv()?;
+    //     println!("Notification: {:?}", notif);
+    //     Ok(())
+    // }
     pub fn event_loop(&mut self) -> Result<()> {
         Ok(())
     }
@@ -136,7 +147,7 @@ impl AudioNightmare {
         }
         Ok(())
     }
-    pub fn set_device_role(&mut self, device_id: &str, role: &Role) -> AppResult<()> {
+    pub fn set_device_role(&self, device_id: &str, role: &Role) -> AppResult<()> {
         let wide_id = device_id.to_wide();
         unsafe {
             self.policy_config
@@ -213,30 +224,77 @@ impl AudioNightmare {
             }
         }
     }
-    fn add_endpoint(&mut self, id: &str) {
-        todo!()
+
+    fn add_endpoint(&mut self, id: &str, known_to_be_active: bool) -> AppResult<()> {
+        let id = String::from(id).to_wide();
+        let device: IMMDevice = unsafe { self.device_enumerator.GetDevice(id.as_pwstr())? };
+        let endpoint: IMMEndpoint = device.cast()?;
+        let direction: Direction = unsafe { endpoint.GetDataFlow()? }
+            .try_into()
+            .expect("Invalid Enum?");
+        println!("{direction:?}");
+        let device: Device = Device::custom(device, direction);
+
+        if !known_to_be_active {
+            let state = device
+                .get_state()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+
+            use DeviceState::*;
+            match state {
+                Active => (),
+                Disabled | NotPresent | Unplugged => return Ok(()),
+            }
+        }
+
+        let device: WindowsAudioDevice = device.try_into()?;
+
+        match direction {
+            Direction::Capture => {
+                if let Some(old) = self.playback_devices.insert(device.guid.clone(), device) {
+                    println!("Playback device already existed? {old:?}");
+                };
+            }
+            Direction::Render => {
+                if let Some(old) = self.recording_devices.insert(device.guid.clone(), device) {
+                    println!("Recording device already existed? {old:?}");
+                };
+            }
+        }
+
+        Ok(())
     }
-    fn remove_endpoint(&mut self, id: &str) {
+    fn remove_endpoint(&mut self, id: &str) -> AppResult<()> {
         if self.playback_devices.remove(id).is_none() {
             self.recording_devices.remove(id);
         }
-        todo!()
+        // todo!();
+        Ok(())
     }
-    fn handle_endpoint_notification(&mut self, notif: WindowsAudioNotification) {
+    pub fn handle_endpoint_notification(
+        &mut self,
+        notif: WindowsAudioNotification,
+    ) -> AppResult<()> {
         use WindowsAudioNotification::*;
         match notif {
-            DeviceAdded { id } => self.add_endpoint(&id),
-            DeviceRemoved { id } => self.remove_endpoint(&id),
+            DeviceAdded { id } => self.add_endpoint(&id, false)?,
+            DeviceRemoved { id } => self.remove_endpoint(&id)?,
             DeviceStateChanged { id, state } => match state.0 {
                 // https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-state-xxx-constants
                 // ACTIVE
-                0x1 => self.add_endpoint(&id),
+                0x1 => self.add_endpoint(&id, true)?,
                 // DISABLED | NOTPRESENT | UNPLUGGED
-                0x2 | 0x4 | 0x8 => self.remove_endpoint(&id),
+                0x2 | 0x4 | 0x8 => self.remove_endpoint(&id)?,
                 _ => panic!("Got unexpected state from DeviceStateChanged!"),
             },
-            DefaultDeviceChanged { id, flow, role } => todo!(),
+            DefaultDeviceChanged { .. } => (),
         }
+        if let Some(proxy) = self.event_proxy.as_ref() {
+            proxy
+                .send_event(CustomEvent::AudioEndpointUpdate)
+                .map_err(|_| RedefaulterError::EventLoopClosed)?;
+        }
+        Ok(())
     }
     /// Gets device by name, ignoring any numeric prefix added by Windows
     pub fn device_by_name_fuzzy<'a>(
@@ -334,6 +392,28 @@ impl AudioNightmare {
         clear_if_matching(&mut left.recording, &right.recording);
         clear_if_matching(&mut left.recording_comms, &right.recording_comms);
     }
+    // TODO take advantage of type system to make sure I can't put in a raw (from config)
+    // DeviceSet, i only want to be able to supply a real known device from the platform impl's enumerations
+    pub fn change_devices(&self, new_devices: DeviceSet) -> AppResult<()> {
+        println!("change_devices: {new_devices:?}");
+        use Role::*;
+        let roles = [
+            (new_devices.playback.guid, vec![Console, Multimedia]),
+            (new_devices.playback_comms.guid, vec![Communications]),
+            (new_devices.recording.guid, vec![Console, Multimedia]),
+            (new_devices.recording_comms.guid, vec![Communications]),
+        ];
+
+        for (guid, roles) in roles.iter() {
+            if !guid.is_empty() {
+                for role in roles {
+                    self.set_device_role(guid, role)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 // Maybe I need to have one for a detected device vs a desired device
@@ -350,6 +430,9 @@ impl WindowsAudioDevice {
     pub fn clear(&mut self) {
         self.human_name.clear();
         self.guid.clear();
+    }
+    pub fn is_empty(&self) -> bool {
+        self.human_name.is_empty() && self.guid.is_empty()
     }
 }
 
