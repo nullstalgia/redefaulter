@@ -1,19 +1,6 @@
 use std::ffi::c_void;
 
-use windows::{
-    core::*,
-    Win32::{
-        Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
-        Foundation::*,
-        Graphics::{Gdi, Gdi::*},
-        Media::Audio::{Endpoints::*, *},
-        System::{
-            Com::*, Console::*, LibraryLoader::GetModuleHandleW, Registry::*,
-            SystemInformation::GetSystemDirectoryW, Threading::*,
-        },
-        UI::Shell::{PropertiesSystem::PROPERTYKEY, *},
-    },
-};
+use windows::{core::*, Win32::Media::Audio::ERole};
 
 // Yoinked from https://github.com/DvdGiessen/microphone-mute-indicator/blob/e1b291efff0a5f89bc1242cbd14bff8ddd1a52a1/src/main.rs#L133
 

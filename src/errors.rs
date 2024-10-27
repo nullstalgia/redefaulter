@@ -8,8 +8,6 @@ pub enum RedefaulterError {
     Windows(#[from] windows_result::Error),
     #[error("Windows Error: {0}")]
     WindowsCore(#[from] windows_core::Error),
-    #[error("Failed to get device info")]
-    FailedToGetInfo,
     #[error("WMI Error: {0}")]
     Wmi(#[from] wmi::WMIError),
     #[error("IO Error: {0}")]
@@ -19,6 +17,12 @@ pub enum RedefaulterError {
     #[error("TOML Deserialization Error: {0}")]
     TomlDe(#[from] toml::de::Error),
     // My errors
+    #[error("Failed to get device info")]
+    FailedToGetInfo,
+    #[error("Failed to get active processes")]
+    FailedToGetProcesses,
     #[error("Failed to get working directory")]
     WorkDir,
+    #[error("Could not trigger process updated event")]
+    ProcessUpdate,
 }

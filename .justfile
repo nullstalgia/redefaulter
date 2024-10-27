@@ -1,6 +1,8 @@
 # https://github.com/casey/just
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
+alias l := list
+
 alias r := run
 alias b := build
 alias br := build-release
@@ -30,3 +32,6 @@ test-integration:
 
 clippy:
   cargo clippy --all-targets --all-features
+
+list *ARGS:
+  cargo run -- list {{ARGS}}

@@ -1,11 +1,7 @@
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-pub use windows::AudioNightmare;
-#[cfg(target_os = "windows")]
-pub use windows::DeviceSet;
-#[cfg(target_os = "windows")]
-pub use windows::WindowsAudioDevice;
+pub use windows::{AudioNightmare, Config, DeviceSet};
 
 // I don't plan on doing this, but I'd rather over-engineer a little to prevent either myself
 // or someone else some future pain.

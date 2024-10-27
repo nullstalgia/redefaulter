@@ -3,17 +3,21 @@ mod panic_handler;
 mod platform;
 mod processes;
 mod profiles;
+mod settings;
 mod structs;
 mod tray_menu;
 
 pub mod args;
 pub mod errors;
 
-use std::{path::PathBuf, sync::mpsc, time::Duration};
-
+use app::App;
 use args::TopLevelCmd;
+use dashmap::DashMap;
 use errors::RedefaulterError;
-use platform::{AudioNightmare, WindowsAudioDevice};
+use platform::AudioNightmare;
+use std::path::PathBuf;
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 
 use color_eyre::eyre::Result;
 use profiles::Profiles;
@@ -27,53 +31,25 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     }
     std::env::set_current_dir(&working_directory).expect("Failed to change working directory");
 
-    let mut platform = AudioNightmare::build()?;
-
     if let Some(subcommand) = args.subcommand {
         match subcommand {
             args::SubCommands::List(categories) => {
+                let platform = AudioNightmare::build()?;
                 platform.print_devices(categories);
+                return Ok(());
             }
-            args::SubCommands::Tui(_) => {}
+            args::SubCommands::Tui(_) => todo!(),
         }
-
-        return Ok(());
     }
 
-    let profiles = Profiles::build()?;
+    let app = App::build()?;
 
-    println!("{profiles:#?}");
-    // println!(
-    //     "{:#?}",
-    //     platform.device_by_name_fuzzy(
-    //         &wasapi::Direction::Render,
-    //         "Speakers (PRO X Wireless Gaming Headset)"
-    //     )
-    // );
+    let instant_1 = Instant::now();
+    println!("{:#?}", app.test());
+    let instant_2 = Instant::now();
 
-    // use std::thread;
-
-    // let (process_tx, process_rx) = mpsc::channel();
-
-    // let thread_join_handle = thread::spawn(move || processes::process_event_loop(process_tx));
-
-    // let mut i = 0;
-    // while let Ok(item) = process_rx.recv() {
-    //     println!("{item:#?}");
-
-    //     i = i + 1;
-    //     if i == 5 {
-    //         break;
-    //     }
-    // }
-
-    // std::mem::drop(process_rx);
-    // println!("dropped");
-    // let res = thread_join_handle.join();
-
-    // platform.print_devices()?;
-    // platform.set_device_test()?;
-    // platform.print_one_audio_event()?;
+    println!("{:?}", instant_2 - instant_1);
+    // println!("{:#?}", app.processes);
 
     Ok(())
 }

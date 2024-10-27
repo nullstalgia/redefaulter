@@ -6,18 +6,14 @@ use std::{
 
 use color_eyre::eyre::Result;
 use regex_lite::Regex;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use takeable::Takeable;
 use wasapi::*;
 use windows::{
     core::PWSTR,
     Win32::{
-        Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
         Media::Audio::*,
-        System::Com::{
-            CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
-            STGM_READ,
-        },
+        System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED},
     },
 };
 
@@ -51,6 +47,9 @@ pub struct AudioNightmare {
     recording_devices: BTreeMap<String, WindowsAudioDevice>,
     /// Regex for fuzzy-matching devices with numeric prefixes
     regex: Regex,
+    /// When `true`, *all* actions taken towards the Console/Multimedia Role
+    /// will be applied to the Communications Role
+    pub unify_communications_devices: bool,
 }
 impl Drop for AudioNightmare {
     fn drop(&mut self) {
@@ -88,18 +87,8 @@ impl AudioNightmare {
             .map_err(|_| RedefaulterError::FailedToGetInfo)?;
 
         for device in &initial_playback {
-            let device = device.expect("Couldn't get device");
-            let human_name = device
-                .get_friendlyname()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
-            let guid = device
-                .get_id()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
-            let listing = WindowsAudioDevice {
-                human_name,
-                guid: guid.clone(),
-            };
-            playback_devices.insert(guid, listing);
+            let device: WindowsAudioDevice = device.expect("Couldn't get device").try_into()?;
+            playback_devices.insert(device.guid.clone(), device);
         }
 
         // println!("{playback_devices:#?}");
@@ -108,19 +97,8 @@ impl AudioNightmare {
             .map_err(|_| RedefaulterError::FailedToGetInfo)?;
 
         for device in &initial_recording {
-            let device = device.expect("Couldn't get device");
-            let human_name = device
-                .get_friendlyname()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
-            // let device_name = device.get_interface_friendlyname()
-            let guid = device
-                .get_id()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
-            let listing = WindowsAudioDevice {
-                human_name,
-                guid: guid.clone(),
-            };
-            recording_devices.insert(guid, listing);
+            let device: WindowsAudioDevice = device.expect("Couldn't get device").try_into()?;
+            recording_devices.insert(device.guid.clone(), device);
         }
 
         // println!("{recording_devices:#?}");
@@ -139,6 +117,7 @@ impl AudioNightmare {
             playback_devices,
             recording_devices,
             regex,
+            unify_communications_devices: false,
         })
     }
     pub fn print_one_audio_event(&mut self) -> Result<()> {
@@ -289,16 +268,89 @@ impl AudioNightmare {
             Direction::Capture => self.recording_devices.get(guid),
         }
     }
+    pub fn get_current_defaults(&self) -> AppResult<DeviceSet> {
+        use wasapi::Direction::*;
+        use wasapi::Role::*;
+        let playback: WindowsAudioDevice = get_default_device_for_role(&Render, &Console)
+            .map_err(|_| RedefaulterError::FailedToGetInfo)?
+            .try_into()?;
+        let playback_comms: WindowsAudioDevice =
+            get_default_device_for_role(&Render, &Communications)
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?
+                .try_into()?;
+        let recording: WindowsAudioDevice = get_default_device_for_role(&Capture, &Console)
+            .map_err(|_| RedefaulterError::FailedToGetInfo)?
+            .try_into()?;
+        let recording_comms: WindowsAudioDevice =
+            get_default_device_for_role(&Capture, &Communications)
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?
+                .try_into()?;
+
+        Ok(DeviceSet {
+            playback,
+            playback_comms,
+            recording,
+            recording_comms,
+        })
+    }
+    fn try_find_device(
+        &self,
+        direction: &Direction,
+        needle: &WindowsAudioDevice,
+    ) -> Option<&WindowsAudioDevice> {
+        self.device_by_guid(direction, &needle.guid)
+            .or_else(|| self.device_by_name_fuzzy(direction, &needle.human_name))
+    }
+    pub fn overlay_available_devices(&self, left: &mut DeviceSet, right: &DeviceSet) {
+        use wasapi::Direction::*;
+        let update_device = |left: &mut WindowsAudioDevice, right: &WindowsAudioDevice| {
+            if let Some(device) = self.try_find_device(&Render, right) {
+                *left = device.clone();
+            }
+        };
+
+        update_device(&mut left.playback, &right.playback);
+        if self.unify_communications_devices {
+            left.playback_comms = left.playback.clone();
+        } else {
+            update_device(&mut left.playback_comms, &right.playback_comms);
+        }
+
+        update_device(&mut left.recording, &right.recording);
+        if self.unify_communications_devices {
+            left.recording_comms = left.recording.clone();
+        } else {
+            update_device(&mut left.recording_comms, &right.recording_comms);
+        }
+    }
+    pub fn discard_healthy(&self, left: &mut DeviceSet, right: &DeviceSet) {
+        let clear_if_matching = |l: &mut WindowsAudioDevice, r: &WindowsAudioDevice| {
+            if l == r {
+                l.clear();
+            }
+        };
+        clear_if_matching(&mut left.playback, &right.playback);
+        clear_if_matching(&mut left.playback_comms, &right.playback_comms);
+        clear_if_matching(&mut left.recording, &right.recording);
+        clear_if_matching(&mut left.recording_comms, &right.recording_comms);
+    }
 }
 
 // Maybe I need to have one for a detected device vs a desired device
 // A desired device won't always be connected to the machine.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WindowsAudioDevice {
     // #[serde(skip)]
     // device_type: Direction,
     human_name: String,
     guid: String,
+}
+
+impl WindowsAudioDevice {
+    pub fn clear(&mut self) {
+        self.human_name.clear();
+        self.guid.clear();
+    }
 }
 
 impl AudioDevice for WindowsAudioDevice {
@@ -315,7 +367,21 @@ impl AudioDevice for WindowsAudioDevice {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+impl TryFrom<wasapi::Device> for WindowsAudioDevice {
+    type Error = RedefaulterError;
+    fn try_from(value: wasapi::Device) -> AppResult<Self> {
+        Ok(WindowsAudioDevice {
+            human_name: value
+                .get_friendlyname()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?,
+            guid: value
+                .get_id()
+                .map_err(|_| RedefaulterError::FailedToGetInfo)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DeviceSet {
     // #[serde(with = "serde_windows_audio_device")]
     #[serde(default)]
@@ -328,9 +394,11 @@ pub struct DeviceSet {
     recording_comms: WindowsAudioDevice,
 }
 
-struct Config {
-    unify_communications_devices: bool,
-    desired_set: DeviceSet,
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Config {
+    pub unify_communications_devices: bool,
+    #[serde(rename = "default")]
+    pub default_devices: DeviceSet,
 }
 
 struct AppContext {

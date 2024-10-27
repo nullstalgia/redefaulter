@@ -12,14 +12,14 @@ use crate::{errors::AppResult, platform::DeviceSet};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppOverride {
-    process_path: PathBuf,
+    pub process_path: PathBuf,
     #[serde(flatten)]
-    override_set: DeviceSet,
+    pub override_set: DeviceSet,
 }
 
 #[derive(Debug)]
 pub struct Profiles {
-    pub profiles: BTreeMap<OsString, AppOverride>,
+    pub inner: BTreeMap<OsString, AppOverride>,
 }
 
 const PROFILES_PATH: &str = "profiles";
@@ -28,7 +28,7 @@ impl Profiles {
     pub fn build() -> AppResult<Self> {
         let dir = PathBuf::from(PROFILES_PATH);
         let mut profiles = Profiles {
-            profiles: BTreeMap::new(),
+            inner: BTreeMap::new(),
         };
 
         if dir.exists() {
@@ -54,13 +54,26 @@ impl Profiles {
             new_map.insert(key, value);
         }
 
-        self.profiles = new_map;
+        self.inner = new_map;
         Ok(())
+    }
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl From<DeviceSet> for AppOverride {
+    fn from(value: DeviceSet) -> Self {
+        Self {
+            process_path: PathBuf::new(),
+            override_set: value,
+        }
     }
 }
 
 fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
     let file_name = path.file_name().expect("File has no name?").to_owned();
-    let profile = toml::from_str(&fs::read_to_string(path)?)?;
+    let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?)?;
+    // if profile.process_path. {}
     Ok((file_name, profile))
 }
