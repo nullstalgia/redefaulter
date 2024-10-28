@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, sync::mpsc::Sender};
 use tao::event_loop::EventLoopProxy;
-use tracing::trace;
+use tracing::{debug, trace};
 use wmi::*;
 
 // Inspired by https://users.rust-lang.org/t/watch-for-windows-process-creation-in-rust/98603/2
@@ -60,7 +60,7 @@ where
 /// notifying the supplied EventLoopProxy when any change occurs.
 pub fn process_event_loop(
     process_map: Arc<DashMap<u32, Process>>,
-    map_updated: Sender<usize>,
+    map_updated: Sender<(usize, bool)>,
     event_proxy: EventLoopProxy<CustomEvent>,
 ) -> AppResult<()> {
     let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
@@ -70,9 +70,27 @@ pub fn process_event_loop(
         process_map.insert(process.process_id, process);
     }
 
+    let exe_path = std::env::current_exe()?;
+    let redefaulter_count = process_map
+        .iter()
+        .filter(|p| {
+            // Maybe I should check for exe name if it doesn't have a path?
+            // I dunno..
+            let Some(path) = p.executable_path.as_ref() else {
+                return false;
+            };
+            path == exe_path.as_path()
+        })
+        .count();
+    let instance_already_exists = redefaulter_count > 1;
+
     map_updated
-        .send(process_map.len())
+        .send((process_map.len(), instance_already_exists))
         .map_err(|_| RedefaulterError::ProcessUpdate)?;
+
+    if instance_already_exists {
+        return Ok(());
+    }
 
     let mut filters = HashMap::<String, FilterValue>::new();
     filters.insert("TargetInstance".to_owned(), FilterValue::is_a::<Process>()?);

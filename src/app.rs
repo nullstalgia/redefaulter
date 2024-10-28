@@ -56,15 +56,18 @@ impl App {
             processes::process_event_loop(map_clone, process_tx, proxy_clone)
         });
 
-        let initial_size =
-            process_rx
-                .recv_timeout(Duration::from_secs(3))
-                .map_err(|e| match e {
-                    mpsc::RecvTimeoutError::Timeout => RedefaulterError::FailedToGetProcesses,
-                    mpsc::RecvTimeoutError::Disconnected => {
-                        panic!("Process watcher was disconnected before sending!")
-                    }
-                })?;
+        let (initial_size, instance_already_exists) = process_rx
+            .recv_timeout(Duration::from_secs(3))
+            .map_err(|e| match e {
+                mpsc::RecvTimeoutError::Timeout => RedefaulterError::FailedToGetProcesses,
+                mpsc::RecvTimeoutError::Disconnected => {
+                    panic!("Process watcher was disconnected before sending!")
+                }
+            })?;
+
+        if instance_already_exists {
+            return Err(RedefaulterError::AlreadyExists);
+        }
 
         assert_eq!(initial_size, processes.len());
 

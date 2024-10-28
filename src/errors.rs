@@ -27,4 +27,6 @@ pub enum RedefaulterError {
     ProcessUpdate,
     #[error("Event loop closed")]
     EventLoopClosed,
+    #[error("An instance of the application is already open")]
+    AlreadyExists,
 }
