@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     errors::AppResult,
-    platform::{ConfigEntry, DeviceSet, Discovered},
+    platform::{ConfigEntry, DeviceSet},
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

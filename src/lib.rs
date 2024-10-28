@@ -14,16 +14,13 @@ pub mod errors;
 
 use app::{App, CustomEvent};
 use args::TopLevelCmd;
-use dashmap::DashMap;
 use errors::RedefaulterError;
 use platform::AudioNightmare;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tao::event::StartCause;
 
 use color_eyre::eyre::Result;
-use profiles::Profiles;
 
 use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
 use tracing::{debug, error, info};

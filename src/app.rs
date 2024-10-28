@@ -104,12 +104,12 @@ impl App {
         let mut active_profiles = Vec::new();
         // let total_profiles = self.profiles.inner.len();
         for process in self.processes.iter() {
-            if remaining_profiles.len() == 0 {
+            if remaining_profiles.is_empty() {
                 break;
             }
             // TODO not check already matched profiles
             for (profile_name, profile) in self.profiles.inner.iter() {
-                if process.profile_matches(&profile) {
+                if process.profile_matches(profile) {
                     if let Some((_, val)) = remaining_profiles.remove_entry(profile_name) {
                         active_profiles.push(val);
                     };

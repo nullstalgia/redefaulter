@@ -2,8 +2,6 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::platform::ConfigEntry;
-
 use super::WindowsAudioDevice;
 
 const DEVICE_DELIMITER: char = '~';

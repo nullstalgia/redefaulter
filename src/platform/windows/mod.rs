@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 
-use color_eyre::eyre::Result;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
@@ -143,17 +142,17 @@ impl AudioNightmare {
     //     println!("Notification: {:?}", notif);
     //     Ok(())
     // }
-    pub fn event_loop(&mut self) -> Result<()> {
-        Ok(())
-    }
-    pub fn set_device_test(&mut self) -> AppResult<()> {
-        let id = "{0.0.0.00000000}.{1e9628d3-7e6c-4979-80f0-46122c6a8ab6}";
-        let id = id.to_wide();
-        for role in [eConsole, eMultimedia, eCommunications] {
-            unsafe { self.policy_config.SetDefaultEndpoint(id.as_pwstr(), role) }?;
-        }
-        Ok(())
-    }
+    // pub fn event_loop(&mut self) -> Result<()> {
+    //     Ok(())
+    // }
+    // pub fn set_device_test(&mut self) -> AppResult<()> {
+    //     let id = "{0.0.0.00000000}.{1e9628d3-7e6c-4979-80f0-46122c6a8ab6}";
+    //     let id = id.to_wide();
+    //     for role in [eConsole, eMultimedia, eCommunications] {
+    //         unsafe { self.policy_config.SetDefaultEndpoint(id.as_pwstr(), role) }?;
+    //     }
+    //     Ok(())
+    // }
     pub fn set_device_role(&self, device_id: &str, role: &Role) -> AppResult<()> {
         let wide_id = device_id.to_wide();
         unsafe {
@@ -313,7 +312,7 @@ impl AudioNightmare {
             return None;
         }
         let find = |map: &'a BTreeMap<String, DiscoveredDevice>| -> Option<&'a DiscoveredDevice> {
-            for (_, device) in map {
+            for device in map.values() {
                 let simplified_name = self.regex.replace(&device.human_name, "($1)");
                 if name == device.human_name || name == simplified_name {
                     return Some(device);

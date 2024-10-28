@@ -4,7 +4,6 @@ use crate::profiles::AppOverride;
 
 use dashmap::DashMap;
 use serde::{Deserialize, Deserializer};
-use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,7 +32,6 @@ pub struct Process {
 
 impl Process {
     pub fn profile_matches(&self, profile: &AppOverride) -> bool {
-        // let test: OsString = String::from("A").into();
         let needs_path = profile.process_path.is_absolute();
         // println!(
         //     "{:?} {:?} {:?}",
@@ -56,36 +54,6 @@ where
 {
     let buf: String = Deserialize::deserialize(deserializer)?;
     Ok(OsString::from(buf))
-}
-
-#[derive(Debug, Clone)]
-pub enum ProcessEventType {
-    Created,
-    Deleted,
-    // Modified,
-}
-
-#[derive(Debug)]
-/// Keeps track of open and closed processes internally, only sending events as
-pub struct ProcessWatcher {
-    pub processes: DashMap<u32, Process>,
-}
-
-impl ProcessWatcher {
-    pub fn build() -> AppResult<Self> {
-        // TODO check for another instance of the app, current_exe() in this task should make it easy
-        let processes = DashMap::new();
-
-        let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
-
-        let results: Vec<Process> = wmi_con.query()?;
-
-        for process in results {
-            processes.insert(process.process_id, process);
-        }
-
-        Ok(Self { processes })
-    }
 }
 
 /// Task that updates a DashMap with the current running processes,

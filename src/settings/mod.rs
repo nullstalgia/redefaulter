@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use fs_err::File;
 use serde::{Deserialize, Serialize};
@@ -19,18 +19,18 @@ impl Config {
     pub fn load(path: &Path, required: bool) -> AppResult<Self> {
         if !path.exists() && !required {
             let default = Config::default();
-            default.save(&path)?;
+            default.save(path)?;
             return Ok(default);
         } else if !path.exists() && required {
             // TODO Make an actual error
             panic!();
         }
-        let mut file = File::open(&path)?;
+        let mut file = File::open(path)?;
         let mut buffer = String::new();
         file.read_to_string(&mut buffer)?;
         drop(file);
         let config: Config = toml::from_str(&buffer)?;
-        config.save(&path)?;
+        config.save(path)?;
         Ok(config)
     }
     pub fn save(&self, config_path: &Path) -> AppResult<()> {

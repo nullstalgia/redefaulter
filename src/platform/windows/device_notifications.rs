@@ -1,7 +1,6 @@
 // "Inspired" by https://github.com/fmsyt/output-switcher/blob/1528d44747793ab4e42d23761e021976a3113d98/src-tauri/src/ipc/audio/notifier.rs#L25
 
 use std::fmt::Debug;
-use std::sync::mpsc::Sender;
 use tao::event_loop::EventLoopProxy;
 use wasapi::{Direction, Role};
 use windows::{
@@ -19,16 +18,16 @@ use windows::{
 use crate::{app::CustomEvent, errors::AppResult};
 
 fn to_win_error<E: Debug>(e: E, code: WIN32_ERROR) -> windows::core::Error {
-    windows::core::Error::new::<String>(code.to_hresult(), format!("{:?}", e).into())
+    windows::core::Error::new::<String>(code.to_hresult(), format!("{:?}", e))
 }
 
 #[derive(Debug, Clone)]
 // #[allow(non_camel_case_types)]
 pub enum WindowsAudioNotification {
     DefaultDeviceChanged {
-        id: String,
-        flow: Direction,
-        role: Role,
+        _id: String,
+        _flow: Direction,
+        _role: Role,
     },
     DeviceAdded {
         id: String,
@@ -119,7 +118,11 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
             let role = Role::try_from(role).map_err(|e| to_win_error(e, ERROR_INVALID_DATA))?;
             self.0
                 .send_event(CustomEvent::AudioEndpointNotification(
-                    WindowsAudioNotification::DefaultDeviceChanged { id, flow, role },
+                    WindowsAudioNotification::DefaultDeviceChanged {
+                        _id: id,
+                        _flow: flow,
+                        _role: role,
+                    },
                 ))
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }
