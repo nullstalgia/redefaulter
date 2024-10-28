@@ -1,8 +1,7 @@
 use std::{
-    collections::BTreeMap,
-    ffi::OsString,
+    path::PathBuf,
     sync::{
-        mpsc::{self, Receiver},
+        mpsc::{self},
         Arc,
     },
     thread::{self, JoinHandle},
@@ -11,12 +10,14 @@ use std::{
 
 use dashmap::DashMap;
 use tao::event_loop::{ControlFlow, EventLoopProxy};
+use tracing::debug;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, ConfigEntry, DeviceSet, Discovered},
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
+    settings::Config,
 };
 
 #[derive(Debug)]
@@ -31,13 +32,17 @@ pub struct App {
     pub profiles: Profiles,
     pub process_watcher_handle: JoinHandle<AppResult<()>>,
     pub processes: Arc<DashMap<u32, Process>>,
-    pub process_rx: Receiver<usize>,
     // TODO option for this to be
     // - on-launch devices
     // - config'd devices
     // - never taken into account
-    pub default_set: DeviceSet<Discovered>,
+    pub config_defaults: DeviceSet<ConfigEntry>,
+    current_defaults: DeviceSet<Discovered>,
+
     active_profiles: Vec<AppOverride>,
+
+    config: Config,
+    config_path: PathBuf,
 }
 
 impl App {
@@ -63,10 +68,20 @@ impl App {
 
         assert_eq!(initial_size, processes.len());
 
-        let endpoints = AudioNightmare::build(Some(event_proxy))?;
+        let exe_path = std::env::current_exe()?;
+        let config_name = exe_path.with_extension("toml");
+        let config_name = config_name
+            .file_name()
+            .expect("Failed to build config name");
+        let config_path = PathBuf::from(config_name);
 
-        // TODO later this should be the defaults set by the user in the config
-        let default_set = endpoints.get_current_defaults()?;
+        let config = Config::load(&config_path, false)?;
+
+        let endpoints = AudioNightmare::build(Some(event_proxy), Some(&config.devices))?;
+
+        let config_defaults = config.devices.default_devices.clone();
+
+        let current_defaults = endpoints.get_current_defaults()?;
 
         let active_profiles = Vec::new();
 
@@ -75,11 +90,14 @@ impl App {
             profiles: Profiles::build()?,
             processes,
             process_watcher_handle,
-            process_rx,
-            default_set,
+            config_defaults,
+            current_defaults,
             active_profiles,
+            config,
+            config_path,
         })
     }
+    /// Run through all of the running processes and find which ones match the user's profiles
     pub fn determine_active_profiles(&self) -> Vec<AppOverride> {
         // TODO make more memory efficient
         let mut remaining_profiles = self.profiles.inner.clone();
@@ -102,12 +120,16 @@ impl App {
 
         active_profiles
     }
-    pub fn get_damaged_devices(&self, active_profiles: Vec<AppOverride>) -> DeviceSet<Discovered> {
-        // let config_default_once = std::iter::once(self.default_set.clone().into());
-        // let profiles = active_profiles.into_iter().chain(config_default_once).rev();
-        let profiles = active_profiles.into_iter().rev();
-
-        let compare_against_me = self.endpoints.get_current_defaults().unwrap();
+    /// Given a list of profiles, will return the roles that need to be changed to fit the active profiles.
+    ///
+    /// Starting from the lowest priority, lays all of their desired devices
+    /// on top of each other, discarding any devices that aren't connected to the system.
+    pub fn get_damaged_devices(
+        &self,
+        active_profiles: Vec<AppOverride>,
+    ) -> Option<DeviceSet<Discovered>> {
+        let config_default_once = std::iter::once(self.config_defaults.clone().into());
+        let profiles = active_profiles.into_iter().chain(config_default_once).rev();
 
         // TODO Consider a DeviceActions type with Options on the Strings
         let mut device_actions = DeviceSet::<Discovered>::default();
@@ -118,21 +140,21 @@ impl App {
         }
 
         self.endpoints
-            .discard_healthy(&mut device_actions, &compare_against_me);
+            .discard_healthy(&mut device_actions, &self.current_defaults);
 
-        device_actions
+        if device_actions.is_empty() {
+            None
+        } else {
+            Some(device_actions)
+        }
     }
     fn update_active_profiles(&mut self) {
         self.active_profiles = self.determine_active_profiles();
     }
-    pub fn test(&self) -> DeviceSet<Discovered> {
-        let need_to_change = self.get_damaged_devices(self.active_profiles.clone());
-
-        need_to_change
+    pub fn generate_device_actions(&self) -> Option<DeviceSet<Discovered>> {
+        self.get_damaged_devices(self.active_profiles.clone())
     }
-    // fn change_devices(&self, new_devices: DeviceSet<Discovered>) -> AppResult<()> {
-    //     Ok(())
-    // }
+    /// Handle our defined `CustomEvent`s coming in from the platform and our tasks
     pub fn handle_custom_event(
         &mut self,
         event: CustomEvent,
@@ -152,20 +174,29 @@ impl App {
                 // including when we send our own desired devices.
                 // So instead of instantly reacting to each one, we wait a moment for it to settle down.
                 let delay = Instant::now() + Duration::from_secs(1);
+                debug!("Audio update! Waiting to take action...");
                 *control_flow = ControlFlow::WaitUntil(delay);
             }
             // A process has opened or closed
             ProcessesChanged => {
+                // Only need to call this when processes change
                 self.update_active_profiles();
-                //trigger changes
                 self.change_devices_if_needed()?;
                 *control_flow = ControlFlow::Wait;
             }
         }
         Ok(())
     }
-    pub fn change_devices_if_needed(&self) -> AppResult<()> {
-        self.endpoints.change_devices(self.test())?;
+    pub fn update_defaults(&mut self) -> AppResult<()> {
+        debug!("Updating defaults!");
+        self.current_defaults = self.endpoints.get_current_defaults()?;
+        Ok(())
+    }
+    pub fn change_devices_if_needed(&mut self) -> AppResult<()> {
+        if let Some(actions) = self.generate_device_actions() {
+            self.endpoints.change_devices(actions)?;
+            self.update_defaults()?;
+        }
         Ok(())
     }
 }

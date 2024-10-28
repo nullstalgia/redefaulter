@@ -88,10 +88,12 @@ impl ProcessWatcher {
     }
 }
 
+/// Task that updates a DashMap with the current running processes,
+/// notifying the supplied EventLoopProxy when any change occurs.
 pub fn process_event_loop(
     process_map: Arc<DashMap<u32, Process>>,
     map_updated: Sender<usize>,
-    event_proxy: EventLoopProxy<CustomEvent>, // tx: Sender<(ProcessEventType, Process)>,
+    event_proxy: EventLoopProxy<CustomEvent>,
 ) -> AppResult<()> {
     let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
 
@@ -122,7 +124,6 @@ pub fn process_event_loop(
     for item in enumerator {
         match item {
             Ok(wbem_class_obj) => {
-                use ProcessEventType::*;
                 let class = wbem_class_obj.class()?;
                 match class.as_str() {
                     "__InstanceCreationEvent" => {
@@ -135,12 +136,8 @@ pub fn process_event_loop(
                         trace!("Closed process: {process:?}");
                         process_map.remove(&process.process_id);
                     }
-                    // "__InstanceModificationEvent" => Modified,
                     _ => Err(WMIError::InvalidDeserializationVariantError(class))?,
                 };
-                // map_updated
-                //     .send(process_map.len())
-                //     .map_err(|_| RedefaulterError::ProcessUpdate)?;
                 event_proxy
                     .send_event(CustomEvent::ProcessesChanged)
                     .map_err(|_| RedefaulterError::EventLoopClosed)?;
@@ -148,34 +145,6 @@ pub fn process_event_loop(
             Err(e) => Err(e)?,
         }
     }
-    // let iterator = enumerator.map(|item| match item {
-    //     Ok(wbem_class_obj) => {
-    //         use ProcessEventType::*;
-    //         let class = wbem_class_obj.class()?;
-    //         let event_type = match class.as_str() {
-    //             "__InstanceCreationEvent" => Created,
-    //             "__InstanceDeletionEvent" => Deleted,
-    //             // "__InstanceModificationEvent" => Modified,
-    //             _ => return Err(WMIError::InvalidDeserializationVariantError(class)),
-    //         };
-    //         Ok((event_type, wbem_class_obj.into_desr::<ProcessEvent>()?))
-    //     }
-    //     Err(e) => Err(e),
-    // });
-
-    // for result in iterator {
-    //     let message = match result {
-    //         Ok(message) => message,
-    //         Err(e) => {
-    //             eprintln!("Error with process message: {e}");
-    //             break;
-    //         }
-    //     };
-    //     if let Err(e) = tx.send((message.0, message.1.target_instance)) {
-    //         eprintln!("Unable to send process event! Closing thread");
-    //         break;
-    //     };
-    // }
 
     Ok(())
 }

@@ -26,7 +26,7 @@ use color_eyre::eyre::Result;
 use profiles::Profiles;
 
 use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::{filter, prelude::*};
 use tracing_subscriber::{fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -54,29 +54,39 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         2,
     )
     .unwrap();
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking_file, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking_stdout, _stdout_guard) = tracing_appender::non_blocking(std::io::stdout());
     let time_fmt = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.6f".to_owned());
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_writer(non_blocking)
-        // .pretty()
+    let fmt_layer_file = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking_file)
         .with_file(false)
         .with_ansi(false)
+        .with_target(true)
+        .with_timer(time_fmt.clone())
+        .with_line_number(true)
+        .with_filter(filter::LevelFilter::TRACE);
+    let fmt_layer_stdout = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking_stdout)
+        .with_file(false)
         .with_target(true)
         .with_timer(time_fmt)
         .with_line_number(true)
         .with_filter(filter::LevelFilter::TRACE);
-    let (fmt_layer, reload_handle) = tracing_subscriber::reload::Layer::new(fmt_layer);
+    let (fmt_layer_file, _reload_handle_file) =
+        tracing_subscriber::reload::Layer::new(fmt_layer_file);
+    let (fmt_layer_stdout, _reload_handle_stdout) =
+        tracing_subscriber::reload::Layer::new(fmt_layer_stdout);
     let env_filter = tracing_subscriber::EnvFilter::new("trace");
     tracing_subscriber::registry()
-        // .with(console)
         .with(env_filter)
-        .with(fmt_layer)
+        .with(fmt_layer_file)
+        .with(fmt_layer_stdout)
         .init();
 
     if let Some(subcommand) = args.subcommand {
         match subcommand {
             args::SubCommands::List(categories) => {
-                let platform = AudioNightmare::build(None)?;
+                let platform = AudioNightmare::build(None, None)?;
                 platform.print_devices(categories);
                 return Ok(());
             }
@@ -91,35 +101,50 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
 
     let mut app = App::build(event_proxy)?;
 
-    let instant_1 = Instant::now();
-    println!("{:#?}", app.test());
-    let instant_2 = Instant::now();
+    // Starting off at DEBUG, and setting to whatever user has defined
+    // reload_handle.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
 
-    println!("{:?}", instant_2 - instant_1);
+    // println!("{:#?}", app.generate_device_actions());
+
     // println!("{:#?}", app.processes);
 
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::NewEvents(StartCause::Init) => *control_flow = ControlFlow::Wait,
-            Event::UserEvent(event) => {
-                // println!("user event: {event:?}");
-                if let Err(e) = app.handle_custom_event(event, control_flow) {
-                    error!("Error in event loop, closing. {e}");
-                    *control_flow = ControlFlow::ExitWithCode(1);
-                };
-            }
-            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-                println!("waited!");
-                app.change_devices_if_needed().unwrap();
-                *control_flow = ControlFlow::Wait;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
-            Event::LoopDestroyed => (),
-            _ => (),
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::NewEvents(StartCause::Init) => {
+            *control_flow = ControlFlow::Wait;
+            app.change_devices_if_needed().unwrap();
         }
+        Event::UserEvent(event) => {
+            // println!("user event: {event:?}");
+            let instant_1 = Instant::now();
+            if let Err(e) = app.handle_custom_event(event, control_flow) {
+                error!("Error in event loop, closing. {e}");
+                *control_flow = ControlFlow::ExitWithCode(1);
+            };
+            let instant_2 = Instant::now();
+            debug!("Event handling took {:?}", instant_2 - instant_1);
+        }
+        // Timeout for an audio device reaction finished waiting
+        Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+            debug!("Done waiting for audio endpoint timeout!");
+            app.update_defaults().unwrap();
+            app.change_devices_if_needed().unwrap();
+            *control_flow = ControlFlow::Wait;
+        }
+        Event::NewEvents(StartCause::WaitCancelled {
+            requested_resume, ..
+        }) => {
+            // We had a wait time, but something else came in before we could finish waiting,
+            // so just check now
+            if requested_resume.is_some() {
+                app.update_defaults().unwrap();
+            }
+        }
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => *control_flow = ControlFlow::Exit,
+        Event::LoopDestroyed => (),
+        _ => (),
     });
 
     // Ok(())

@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    marker::PhantomData,
-    sync::mpsc::{self, Receiver},
-    time::Instant,
-};
+use std::{collections::BTreeMap, marker::PhantomData};
 
 use color_eyre::eyre::Result;
 use regex_lite::Regex;
@@ -24,7 +19,6 @@ use crate::{
     app::CustomEvent,
     args::ListSubcommand,
     errors::{AppResult, RedefaulterError},
-    profiles::AppOverride,
 };
 
 use device_notifications::{NotificationCallbacks, WindowsAudioNotification};
@@ -35,9 +29,6 @@ use super::{AudioDevice, ConfigEntry, Discovered};
 pub mod device_notifications;
 mod device_ser;
 mod policy_config;
-
-use serde::de::{self, MapAccess, Visitor};
-use serde::{Deserializer, Serializer};
 
 pub type DiscoveredDevice = WindowsAudioDevice<Discovered>;
 pub type ConfigDevice = WindowsAudioDevice<ConfigEntry>;
@@ -79,7 +70,10 @@ impl Drop for AudioNightmare {
     }
 }
 impl AudioNightmare {
-    pub fn build(event_proxy: Option<EventLoopProxy<CustomEvent>>) -> AppResult<Self> {
+    pub fn build(
+        event_proxy: Option<EventLoopProxy<CustomEvent>>,
+        config: Option<&PlatformConfig>,
+    ) -> AppResult<Self> {
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
         }
@@ -126,6 +120,12 @@ impl AudioNightmare {
         // a dash '-', a space ' ', and captures the rest of the string '(.+?)' until the closing parenthesis.
         let regex = Regex::new(r"\(\d+- (.+?)\)").expect("Regex failed to build");
 
+        let unify_communications_devices = if let Some(config) = config {
+            config.unify_communications_devices
+        } else {
+            false
+        };
+
         Ok(Self {
             policy_config: Takeable::new(policy_config),
             device_enumerator: Takeable::new(device_enumerator),
@@ -134,7 +134,7 @@ impl AudioNightmare {
             playback_devices,
             recording_devices,
             regex,
-            unify_communications_devices: true,
+            unify_communications_devices,
             event_proxy,
         })
     }
@@ -384,6 +384,12 @@ impl AudioNightmare {
             update_device(&mut left.playback_comms, &right.playback_comms);
         }
 
+        let update_device = |left: &mut DiscoveredDevice, right: &ConfigDevice| {
+            if let Some(device) = self.try_find_device(&Capture, right) {
+                *left = device.clone();
+            }
+        };
+
         update_device(&mut left.recording, &right.recording);
         if self.unify_communications_devices {
             left.recording_comms = left.recording.clone();
@@ -402,27 +408,30 @@ impl AudioNightmare {
         clear_if_matching(&mut left.recording, &right.recording);
         clear_if_matching(&mut left.recording_comms, &right.recording_comms);
     }
-    // TODO take advantage of type system to make sure I can't put in a raw (from config)
-    // DeviceSet, i only want to be able to supply a real known device from the platform impl's enumerations
     pub fn change_devices(&self, new_devices: DeviceSet<Discovered>) -> AppResult<()> {
-        println!("change_devices: {new_devices:?}");
         use Role::*;
         let roles = [
-            (new_devices.playback.guid, vec![Console, Multimedia]),
-            (new_devices.playback_comms.guid, vec![Communications]),
-            (new_devices.recording.guid, vec![Console, Multimedia]),
-            (new_devices.recording_comms.guid, vec![Communications]),
+            (new_devices.playback, vec![Console, Multimedia]),
+            (new_devices.playback_comms, vec![Communications]),
+            (new_devices.recording, vec![Console, Multimedia]),
+            (new_devices.recording_comms, vec![Communications]),
         ];
 
-        for (guid, roles) in roles.iter() {
-            if !guid.is_empty() {
+        for (device, roles) in roles.iter() {
+            if !device.guid.is_empty() {
+                // debug!("");
+                println!("Setting {} -> {roles:?}", device.human_name);
                 for role in roles {
-                    self.set_device_role(guid, role)?;
+                    self.set_device_role(&device.guid, role)?;
                 }
             }
         }
 
         Ok(())
+    }
+    /// Update the Platform handler with the given config
+    pub fn change_config(&mut self, config: &PlatformConfig) {
+        self.unify_communications_devices = config.unify_communications_devices;
     }
 }
 
@@ -430,6 +439,7 @@ impl AudioNightmare {
 pub struct WindowsAudioDevice<State> {
     human_name: String,
     guid: String,
+    // direction: Option<Direction>,
     _state: PhantomData<State>,
 }
 
@@ -442,6 +452,12 @@ impl<State> WindowsAudioDevice<State> {
         self.human_name.is_empty() && self.guid.is_empty()
     }
 }
+
+// impl WindowsAudioDevice<Discovered> {
+//     pub fn direction(&self) -> Direction {
+//         self.direction.unwrap()
+//     }
+// }
 
 impl<State> AudioDevice for WindowsAudioDevice<State> {
     fn guid(&self) -> &str {
@@ -484,8 +500,17 @@ pub struct DeviceSet<State> {
     recording_comms: WindowsAudioDevice<State>,
 }
 
+impl<State> DeviceSet<State> {
+    pub fn is_empty(&self) -> bool {
+        self.playback.is_empty()
+            && self.playback_comms.is_empty()
+            && self.recording.is_empty()
+            && self.recording_comms.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Config {
+pub struct PlatformConfig {
     pub unify_communications_devices: bool,
     #[serde(rename = "default")]
     pub default_devices: DeviceSet<ConfigEntry>,
