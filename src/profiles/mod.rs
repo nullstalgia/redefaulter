@@ -8,13 +8,16 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::AppResult, platform::DeviceSet};
+use crate::{
+    errors::AppResult,
+    platform::{ConfigEntry, DeviceSet, Discovered},
+};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppOverride {
     pub process_path: PathBuf,
     #[serde(flatten)]
-    pub override_set: DeviceSet,
+    pub override_set: DeviceSet<ConfigEntry>,
 }
 
 #[derive(Debug)]
@@ -62,8 +65,8 @@ impl Profiles {
     }
 }
 
-impl From<DeviceSet> for AppOverride {
-    fn from(value: DeviceSet) -> Self {
+impl From<DeviceSet<ConfigEntry>> for AppOverride {
+    fn from(value: DeviceSet<ConfigEntry>) -> Self {
         Self {
             process_path: PathBuf::new(),
             override_set: value,
@@ -74,6 +77,6 @@ impl From<DeviceSet> for AppOverride {
 fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
     let file_name = path.file_name().expect("File has no name?").to_owned();
     let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?)?;
-    // if profile.process_path. {}
+    // TODO handle empty path
     Ok((file_name, profile))
 }

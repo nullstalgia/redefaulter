@@ -1,4 +1,5 @@
 use color_eyre::eyre::Result;
+use tracing::error;
 
 // https://ratatui.rs/recipes/apps/better-panic/
 pub fn initialize_panic_handler() -> Result<()> {
@@ -12,7 +13,7 @@ pub fn initialize_panic_handler() -> Result<()> {
         .into_hooks();
     eyre_hook.install()?;
     std::panic::set_hook(Box::new(move |panic_info| {
-        // error!("Panic! {:?}", panic_info);
+        error!("Panic! {:#?}", panic_info);
         let msg = format!("{}", panic_hook.panic_report(panic_info));
         #[cfg(not(debug_assertions))]
         {
@@ -25,8 +26,8 @@ pub fn initialize_panic_handler() -> Result<()> {
             // prints human-panic message
             print_msg(file_path.clone(), &meta)
                 .expect("human-panic: printing error message to console failed");
-
-            // info!("Full panic dump at: {:?}", file_path);
+            use tracing::info;
+            info!("Full panic dump at: {:?}", file_path);
         }
         eprintln!("Error: {}", strip_ansi_escapes::strip_str(msg));
 

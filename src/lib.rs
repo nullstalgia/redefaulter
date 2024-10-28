@@ -20,12 +20,13 @@ use platform::AudioNightmare;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
+use tao::event::StartCause;
 
 use color_eyre::eyre::Result;
 use profiles::Profiles;
 
 use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{filter, prelude::*};
 use tracing_subscriber::{fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -98,12 +99,19 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     // println!("{:#?}", app.processes);
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
         match event {
+            Event::NewEvents(StartCause::Init) => *control_flow = ControlFlow::Wait,
             Event::UserEvent(event) => {
                 // println!("user event: {event:?}");
-                app.handle_custom_event(event).expect("AAAAAAAAAAA");
+                if let Err(e) = app.handle_custom_event(event, control_flow) {
+                    error!("Error in event loop, closing. {e}");
+                    *control_flow = ControlFlow::ExitWithCode(1);
+                };
+            }
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                println!("waited!");
+                app.change_devices_if_needed().unwrap();
+                *control_flow = ControlFlow::Wait;
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

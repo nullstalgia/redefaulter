@@ -1,10 +1,14 @@
+use std::marker::PhantomData;
+
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::platform::ConfigEntry;
 
 use super::WindowsAudioDevice;
 
 const DEVICE_DELIMITER: char = '~';
 
-impl<'de> Deserialize<'de> for WindowsAudioDevice {
+impl<'de, State> Deserialize<'de> for WindowsAudioDevice<State> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -28,11 +32,15 @@ impl<'de> Deserialize<'de> for WindowsAudioDevice {
             _ => (String::new(), String::new()),
         };
 
-        Ok(WindowsAudioDevice { human_name, guid })
+        Ok(WindowsAudioDevice {
+            human_name,
+            guid,
+            _state: PhantomData,
+        })
     }
 }
 
-impl Serialize for WindowsAudioDevice {
+impl<State> Serialize for WindowsAudioDevice<State> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,

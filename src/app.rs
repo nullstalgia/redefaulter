@@ -6,15 +6,15 @@ use std::{
         Arc,
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use dashmap::DashMap;
-use tao::event_loop::EventLoopProxy;
+use tao::event_loop::{ControlFlow, EventLoopProxy};
 
 use crate::{
     errors::{AppResult, RedefaulterError},
-    platform::{AudioEndpointNotification, AudioNightmare, DeviceSet},
+    platform::{AudioEndpointNotification, AudioNightmare, ConfigEntry, DeviceSet, Discovered},
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
 };
@@ -36,7 +36,7 @@ pub struct App {
     // - on-launch devices
     // - config'd devices
     // - never taken into account
-    pub default_set: DeviceSet,
+    pub default_set: DeviceSet<Discovered>,
     active_profiles: Vec<AppOverride>,
 }
 
@@ -102,14 +102,15 @@ impl App {
 
         active_profiles
     }
-    pub fn get_damaged_devices(&self, active_profiles: Vec<AppOverride>) -> DeviceSet {
-        let config_default_once = std::iter::once(self.default_set.clone().into());
-        let profiles = active_profiles.into_iter().chain(config_default_once).rev();
+    pub fn get_damaged_devices(&self, active_profiles: Vec<AppOverride>) -> DeviceSet<Discovered> {
+        // let config_default_once = std::iter::once(self.default_set.clone().into());
+        // let profiles = active_profiles.into_iter().chain(config_default_once).rev();
+        let profiles = active_profiles.into_iter().rev();
 
-        let compare_against_me = self.default_set.clone();
+        let compare_against_me = self.endpoints.get_current_defaults().unwrap();
 
         // TODO Consider a DeviceActions type with Options on the Strings
-        let mut device_actions = DeviceSet::default();
+        let mut device_actions = DeviceSet::<Discovered>::default();
 
         for profile in profiles {
             self.endpoints
@@ -124,30 +125,47 @@ impl App {
     fn update_active_profiles(&mut self) {
         self.active_profiles = self.determine_active_profiles();
     }
-    pub fn test(&self) -> DeviceSet {
+    pub fn test(&self) -> DeviceSet<Discovered> {
         let need_to_change = self.get_damaged_devices(self.active_profiles.clone());
 
         need_to_change
     }
-    fn change_devices(&self, new_devices: DeviceSet) -> AppResult<()> {
-        Ok(())
-    }
-    pub fn handle_custom_event(&mut self, event: CustomEvent) -> AppResult<()> {
+    // fn change_devices(&self, new_devices: DeviceSet<Discovered>) -> AppResult<()> {
+    //     Ok(())
+    // }
+    pub fn handle_custom_event(
+        &mut self,
+        event: CustomEvent,
+        control_flow: &mut ControlFlow,
+    ) -> AppResult<()> {
         use CustomEvent::*;
         match event {
+            // Platform notification about endpoint status
             AudioEndpointNotification(notif) => {
-                self.endpoints.handle_endpoint_notification(notif)?
+                // Dispatch to our platform-specific handler
+                self.endpoints.handle_endpoint_notification(notif)?;
+                *control_flow = ControlFlow::Wait;
             }
+            // Handler processed event, now we can react
             AudioEndpointUpdate => {
-                //trigger changes
-                self.endpoints.change_devices(self.test())?;
+                // Changing default audio devices on windows can trigger several "noisy" events back-to-back,
+                // including when we send our own desired devices.
+                // So instead of instantly reacting to each one, we wait a moment for it to settle down.
+                let delay = Instant::now() + Duration::from_secs(1);
+                *control_flow = ControlFlow::WaitUntil(delay);
             }
+            // A process has opened or closed
             ProcessesChanged => {
                 self.update_active_profiles();
                 //trigger changes
-                self.endpoints.change_devices(self.test())?;
+                self.change_devices_if_needed()?;
+                *control_flow = ControlFlow::Wait;
             }
         }
+        Ok(())
+    }
+    pub fn change_devices_if_needed(&self) -> AppResult<()> {
+        self.endpoints.change_devices(self.test())?;
         Ok(())
     }
 }

@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    marker::PhantomData,
     sync::mpsc::{self, Receiver},
     time::Instant,
 };
@@ -29,11 +30,17 @@ use crate::{
 use device_notifications::{NotificationCallbacks, WindowsAudioNotification};
 use policy_config::{IPolicyConfig, PolicyConfig};
 
-use super::AudioDevice;
+use super::{AudioDevice, ConfigEntry, Discovered};
 
 pub mod device_notifications;
 mod device_ser;
 mod policy_config;
+
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserializer, Serializer};
+
+pub type DiscoveredDevice = WindowsAudioDevice<Discovered>;
+pub type ConfigDevice = WindowsAudioDevice<ConfigEntry>;
 
 pub struct AudioNightmare {
     /// Interface to query endpoints through
@@ -45,9 +52,9 @@ pub struct AudioNightmare {
     /// Channel for notifications for audio endpoint events
     // callback_rx: Receiver<WindowsAudioNotification>,
     /// Existing devices attached to the host
-    playback_devices: BTreeMap<String, WindowsAudioDevice>,
+    playback_devices: BTreeMap<String, DiscoveredDevice>,
     /// Existing devices attached to the host
-    recording_devices: BTreeMap<String, WindowsAudioDevice>,
+    recording_devices: BTreeMap<String, DiscoveredDevice>,
     /// Regex for fuzzy-matching devices with numeric prefixes
     regex: Regex,
     /// Used to tell `App` that something has changed
@@ -91,7 +98,7 @@ impl AudioNightmare {
             .map_err(|_| RedefaulterError::FailedToGetInfo)?;
 
         for device in &initial_playback {
-            let device: WindowsAudioDevice = device.expect("Couldn't get device").try_into()?;
+            let device: DiscoveredDevice = device.expect("Couldn't get device").try_into()?;
             playback_devices.insert(device.guid.clone(), device);
         }
 
@@ -101,7 +108,7 @@ impl AudioNightmare {
             .map_err(|_| RedefaulterError::FailedToGetInfo)?;
 
         for device in &initial_recording {
-            let device: WindowsAudioDevice = device.expect("Couldn't get device").try_into()?;
+            let device: DiscoveredDevice = device.expect("Couldn't get device").try_into()?;
             recording_devices.insert(device.guid.clone(), device);
         }
 
@@ -247,7 +254,7 @@ impl AudioNightmare {
             }
         }
 
-        let device: WindowsAudioDevice = device.try_into()?;
+        let device: DiscoveredDevice = device.try_into()?;
 
         match direction {
             Direction::Capture => {
@@ -301,45 +308,44 @@ impl AudioNightmare {
         &'a self,
         direction: &Direction,
         name: &str,
-    ) -> Option<&'a WindowsAudioDevice> {
+    ) -> Option<&'a DiscoveredDevice> {
         if name.is_empty() {
             return None;
         }
-        let find =
-            |map: &'a BTreeMap<String, WindowsAudioDevice>| -> Option<&'a WindowsAudioDevice> {
-                for (_, device) in map {
-                    let simplified_name = self.regex.replace(&device.human_name, "($1)");
-                    if name == device.human_name || name == simplified_name {
-                        return Some(device);
-                    }
+        let find = |map: &'a BTreeMap<String, DiscoveredDevice>| -> Option<&'a DiscoveredDevice> {
+            for (_, device) in map {
+                let simplified_name = self.regex.replace(&device.human_name, "($1)");
+                if name == device.human_name || name == simplified_name {
+                    return Some(device);
                 }
-                None
-            };
+            }
+            None
+        };
         match direction {
             Direction::Render => find(&self.playback_devices),
             Direction::Capture => find(&self.recording_devices),
         }
     }
-    fn device_by_guid(&self, direction: &Direction, guid: &str) -> Option<&WindowsAudioDevice> {
+    fn device_by_guid(&self, direction: &Direction, guid: &str) -> Option<&DiscoveredDevice> {
         match direction {
             Direction::Render => self.playback_devices.get(guid),
             Direction::Capture => self.recording_devices.get(guid),
         }
     }
-    pub fn get_current_defaults(&self) -> AppResult<DeviceSet> {
+    pub fn get_current_defaults(&self) -> AppResult<DeviceSet<Discovered>> {
         use wasapi::Direction::*;
         use wasapi::Role::*;
-        let playback: WindowsAudioDevice = get_default_device_for_role(&Render, &Console)
+        let playback: DiscoveredDevice = get_default_device_for_role(&Render, &Console)
             .map_err(|_| RedefaulterError::FailedToGetInfo)?
             .try_into()?;
-        let playback_comms: WindowsAudioDevice =
+        let playback_comms: DiscoveredDevice =
             get_default_device_for_role(&Render, &Communications)
                 .map_err(|_| RedefaulterError::FailedToGetInfo)?
                 .try_into()?;
-        let recording: WindowsAudioDevice = get_default_device_for_role(&Capture, &Console)
+        let recording: DiscoveredDevice = get_default_device_for_role(&Capture, &Console)
             .map_err(|_| RedefaulterError::FailedToGetInfo)?
             .try_into()?;
-        let recording_comms: WindowsAudioDevice =
+        let recording_comms: DiscoveredDevice =
             get_default_device_for_role(&Capture, &Communications)
                 .map_err(|_| RedefaulterError::FailedToGetInfo)?
                 .try_into()?;
@@ -354,14 +360,18 @@ impl AudioNightmare {
     fn try_find_device(
         &self,
         direction: &Direction,
-        needle: &WindowsAudioDevice,
-    ) -> Option<&WindowsAudioDevice> {
+        needle: &ConfigDevice,
+    ) -> Option<&DiscoveredDevice> {
         self.device_by_guid(direction, &needle.guid)
             .or_else(|| self.device_by_name_fuzzy(direction, &needle.human_name))
     }
-    pub fn overlay_available_devices(&self, left: &mut DeviceSet, right: &DeviceSet) {
+    pub fn overlay_available_devices(
+        &self,
+        left: &mut DeviceSet<Discovered>,
+        right: &DeviceSet<ConfigEntry>,
+    ) {
         use wasapi::Direction::*;
-        let update_device = |left: &mut WindowsAudioDevice, right: &WindowsAudioDevice| {
+        let update_device = |left: &mut DiscoveredDevice, right: &ConfigDevice| {
             if let Some(device) = self.try_find_device(&Render, right) {
                 *left = device.clone();
             }
@@ -381,8 +391,8 @@ impl AudioNightmare {
             update_device(&mut left.recording_comms, &right.recording_comms);
         }
     }
-    pub fn discard_healthy(&self, left: &mut DeviceSet, right: &DeviceSet) {
-        let clear_if_matching = |l: &mut WindowsAudioDevice, r: &WindowsAudioDevice| {
+    pub fn discard_healthy(&self, left: &mut DeviceSet<Discovered>, right: &DeviceSet<Discovered>) {
+        let clear_if_matching = |l: &mut DiscoveredDevice, r: &DiscoveredDevice| {
             if l == r {
                 l.clear();
             }
@@ -394,7 +404,7 @@ impl AudioNightmare {
     }
     // TODO take advantage of type system to make sure I can't put in a raw (from config)
     // DeviceSet, i only want to be able to supply a real known device from the platform impl's enumerations
-    pub fn change_devices(&self, new_devices: DeviceSet) -> AppResult<()> {
+    pub fn change_devices(&self, new_devices: DeviceSet<Discovered>) -> AppResult<()> {
         println!("change_devices: {new_devices:?}");
         use Role::*;
         let roles = [
@@ -416,17 +426,14 @@ impl AudioNightmare {
     }
 }
 
-// Maybe I need to have one for a detected device vs a desired device
-// A desired device won't always be connected to the machine.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct WindowsAudioDevice {
-    // #[serde(skip)]
-    // device_type: Direction,
+pub struct WindowsAudioDevice<State> {
     human_name: String,
     guid: String,
+    _state: PhantomData<State>,
 }
 
-impl WindowsAudioDevice {
+impl<State> WindowsAudioDevice<State> {
     pub fn clear(&mut self) {
         self.human_name.clear();
         self.guid.clear();
@@ -436,7 +443,7 @@ impl WindowsAudioDevice {
     }
 }
 
-impl AudioDevice for WindowsAudioDevice {
+impl<State> AudioDevice for WindowsAudioDevice<State> {
     fn guid(&self) -> &str {
         self.guid.as_str()
     }
@@ -450,49 +457,49 @@ impl AudioDevice for WindowsAudioDevice {
     }
 }
 
-impl TryFrom<wasapi::Device> for WindowsAudioDevice {
+impl TryFrom<wasapi::Device> for DiscoveredDevice {
     type Error = RedefaulterError;
     fn try_from(value: wasapi::Device) -> AppResult<Self> {
-        Ok(WindowsAudioDevice {
+        Ok(DiscoveredDevice {
             human_name: value
                 .get_friendlyname()
                 .map_err(|_| RedefaulterError::FailedToGetInfo)?,
             guid: value
                 .get_id()
                 .map_err(|_| RedefaulterError::FailedToGetInfo)?,
+            _state: PhantomData,
         })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct DeviceSet {
-    // #[serde(with = "serde_windows_audio_device")]
+pub struct DeviceSet<State> {
     #[serde(default)]
-    playback: WindowsAudioDevice,
+    playback: WindowsAudioDevice<State>,
     #[serde(default)]
-    playback_comms: WindowsAudioDevice,
+    playback_comms: WindowsAudioDevice<State>,
     #[serde(default)]
-    recording: WindowsAudioDevice,
+    recording: WindowsAudioDevice<State>,
     #[serde(default)]
-    recording_comms: WindowsAudioDevice,
+    recording_comms: WindowsAudioDevice<State>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     pub unify_communications_devices: bool,
     #[serde(rename = "default")]
-    pub default_devices: DeviceSet,
+    pub default_devices: DeviceSet<ConfigEntry>,
 }
 
-struct AppContext {
-    config: Config,
-    overrides: Vec<AppOverride>,
-    desired_set: DeviceSet,
-    current_set: DeviceSet,
-    // To prevent fighting with something else messing with devices
-    changes_within_few_seconds: usize,
-    last_change: Instant,
-}
+// struct AppContext {
+//     config: Config,
+//     overrides: Vec<AppOverride>,
+//     desired_set: DeviceSet,
+//     current_set: DeviceSet,
+//     // To prevent fighting with something else messing with devices
+//     changes_within_few_seconds: usize,
+//     last_change: Instant,
+// }
 
 fn pwstr_eq(a: PWSTR, b: PWSTR) -> bool {
     let mut offset = 0;
