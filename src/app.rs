@@ -9,6 +9,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use takeable::Takeable;
 use tao::event_loop::{ControlFlow, EventLoopProxy};
 use tracing::debug;
 
@@ -30,7 +31,7 @@ pub enum CustomEvent {
 pub struct App {
     pub endpoints: AudioNightmare,
     pub profiles: Profiles,
-    pub process_watcher_handle: JoinHandle<AppResult<()>>,
+    pub process_watcher_handle: Takeable<JoinHandle<AppResult<()>>>,
     pub processes: Arc<DashMap<u32, Process>>,
     // TODO option for this to be
     // - on-launch devices
@@ -92,7 +93,7 @@ impl App {
             endpoints,
             profiles: Profiles::build()?,
             processes,
-            process_watcher_handle,
+            process_watcher_handle: Takeable::new(process_watcher_handle),
             config_defaults,
             current_defaults,
             active_profiles,

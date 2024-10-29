@@ -61,14 +61,14 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         .with_target(true)
         .with_timer(time_fmt.clone())
         .with_line_number(true)
-        .with_filter(filter::LevelFilter::TRACE);
+        .with_filter(filter::LevelFilter::DEBUG);
     let fmt_layer_stdout = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking_stdout)
         .with_file(false)
         .with_target(true)
         .with_timer(time_fmt)
         .with_line_number(true)
-        .with_filter(filter::LevelFilter::TRACE);
+        .with_filter(filter::LevelFilter::DEBUG);
     let (fmt_layer_file, _reload_handle_file) =
         tracing_subscriber::reload::Layer::new(fmt_layer_file);
     let (fmt_layer_stdout, _reload_handle_stdout) =
@@ -105,43 +105,49 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
 
     // println!("{:#?}", app.processes);
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::NewEvents(StartCause::Init) => {
-            *control_flow = ControlFlow::Wait;
-            app.change_devices_if_needed().unwrap();
+    event_loop.run(move |event, _, control_flow| {
+        if app.process_watcher_handle.is_finished() {
+            let result = app.process_watcher_handle.take().join();
+            panic!("Process watcher has closed! {:#?}", result);
         }
-        Event::UserEvent(event) => {
-            // println!("user event: {event:?}");
-            let instant_1 = Instant::now();
-            if let Err(e) = app.handle_custom_event(event, control_flow) {
-                error!("Error in event loop, closing. {e}");
-                *control_flow = ControlFlow::ExitWithCode(1);
-            };
-            let instant_2 = Instant::now();
-            debug!("Event handling took {:?}", instant_2 - instant_1);
-        }
-        // Timeout for an audio device reaction finished waiting
-        Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-            debug!("Done waiting for audio endpoint timeout!");
-            app.update_defaults().unwrap();
-            app.change_devices_if_needed().unwrap();
-            *control_flow = ControlFlow::Wait;
-        }
-        Event::NewEvents(StartCause::WaitCancelled {
-            requested_resume, ..
-        }) => {
-            // We had a wait time, but something else came in before we could finish waiting,
-            // so just check now
-            if requested_resume.is_some() {
-                app.update_defaults().unwrap();
+        match event {
+            Event::NewEvents(StartCause::Init) => {
+                *control_flow = ControlFlow::Wait;
+                app.change_devices_if_needed().unwrap();
             }
+            Event::UserEvent(event) => {
+                // println!("user event: {event:?}");
+                let instant_1 = Instant::now();
+                if let Err(e) = app.handle_custom_event(event, control_flow) {
+                    error!("Error in event loop, closing. {e}");
+                    *control_flow = ControlFlow::ExitWithCode(1);
+                };
+                let instant_2 = Instant::now();
+                debug!("Event handling took {:?}", instant_2 - instant_1);
+            }
+            // Timeout for an audio device reaction finished waiting
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                debug!("Done waiting for audio endpoint timeout!");
+                app.update_defaults().unwrap();
+                app.change_devices_if_needed().unwrap();
+                *control_flow = ControlFlow::Wait;
+            }
+            Event::NewEvents(StartCause::WaitCancelled {
+                requested_resume, ..
+            }) => {
+                // We had a wait time, but something else came in before we could finish waiting,
+                // so just check now
+                if requested_resume.is_some() {
+                    app.update_defaults().unwrap();
+                }
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            Event::LoopDestroyed => (),
+            _ => (),
         }
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => *control_flow = ControlFlow::Exit,
-        Event::LoopDestroyed => (),
-        _ => (),
     });
 
     // Ok(())
