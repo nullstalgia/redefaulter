@@ -46,6 +46,8 @@ pub struct App {
     config_path: PathBuf,
 }
 
+// TODO check for wrestling with other apps
+
 impl App {
     pub fn build(event_proxy: EventLoopProxy<CustomEvent>) -> AppResult<Self> {
         let processes = Arc::new(DashMap::new());
