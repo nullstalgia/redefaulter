@@ -87,8 +87,7 @@ impl AudioNightmare {
         let mut playback_devices = BTreeMap::new();
         let mut recording_devices = BTreeMap::new();
 
-        let initial_playback = DeviceCollection::new(&Direction::Render)
-            .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+        let initial_playback = DeviceCollection::new(&Direction::Render)?;
 
         for device in &initial_playback {
             let device: DiscoveredDevice = device.expect("Couldn't get device").try_into()?;
@@ -97,8 +96,7 @@ impl AudioNightmare {
 
         // println!("{playback_devices:#?}");
 
-        let initial_recording = DeviceCollection::new(&Direction::Capture)
-            .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+        let initial_recording = DeviceCollection::new(&Direction::Capture)?;
 
         for device in &initial_recording {
             let device: DiscoveredDevice = device.expect("Couldn't get device").try_into()?;
@@ -242,9 +240,7 @@ impl AudioNightmare {
         let device: Device = Device::custom(device, direction);
 
         if !known_to_be_active {
-            let state = device
-                .get_state()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?;
+            let state = device.get_state()?;
 
             use DeviceState::*;
             match state {
@@ -334,20 +330,14 @@ impl AudioNightmare {
     pub fn get_current_defaults(&self) -> AppResult<DeviceSet<Discovered>> {
         use wasapi::Direction::*;
         use wasapi::Role::*;
-        let playback: DiscoveredDevice = get_default_device_for_role(&Render, &Console)
-            .map_err(|_| RedefaulterError::FailedToGetInfo)?
-            .try_into()?;
+        let playback: DiscoveredDevice =
+            get_default_device_for_role(&Render, &Console)?.try_into()?;
         let playback_comms: DiscoveredDevice =
-            get_default_device_for_role(&Render, &Communications)
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?
-                .try_into()?;
-        let recording: DiscoveredDevice = get_default_device_for_role(&Capture, &Console)
-            .map_err(|_| RedefaulterError::FailedToGetInfo)?
-            .try_into()?;
+            get_default_device_for_role(&Render, &Communications)?.try_into()?;
+        let recording: DiscoveredDevice =
+            get_default_device_for_role(&Capture, &Console)?.try_into()?;
         let recording_comms: DiscoveredDevice =
-            get_default_device_for_role(&Capture, &Communications)
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?
-                .try_into()?;
+            get_default_device_for_role(&Capture, &Communications)?.try_into()?;
 
         Ok(DeviceSet {
             playback,
@@ -476,12 +466,8 @@ impl TryFrom<wasapi::Device> for DiscoveredDevice {
     type Error = RedefaulterError;
     fn try_from(value: wasapi::Device) -> AppResult<Self> {
         Ok(DiscoveredDevice {
-            human_name: value
-                .get_friendlyname()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?,
-            guid: value
-                .get_id()
-                .map_err(|_| RedefaulterError::FailedToGetInfo)?,
+            human_name: value.get_friendlyname()?,
+            guid: value.get_id()?,
             _state: PhantomData,
         })
     }

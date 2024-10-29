@@ -10,6 +10,8 @@ pub enum RedefaulterError {
     WindowsCore(#[from] windows_core::Error),
     #[error("WMI Error: {0}")]
     Wmi(#[from] wmi::WMIError),
+    #[error("Wasapi Error: {0}")]
+    Wasapi(#[from] wasapi::WasapiError),
     #[error("IO Error: {0}")]
     Io(#[from] std::io::Error),
     #[error("TOML Serialization Error: {0}")]
@@ -17,8 +19,6 @@ pub enum RedefaulterError {
     #[error("TOML Deserialization Error: {0}")]
     TomlDe(#[from] toml::de::Error),
     // My errors
-    #[error("Failed to get device info")]
-    FailedToGetInfo,
     #[error("Failed to get active processes")]
     FailedToGetProcesses,
     #[error("Failed to get working directory")]
