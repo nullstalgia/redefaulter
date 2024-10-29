@@ -1,5 +1,13 @@
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 use color_eyre::eyre::Result;
-use tracing::error;
+use tao::event_loop::EventLoopProxy;
+use tracing::{error, info, warn};
+
+use crate::{app::CustomEvent, errors::RedefaulterError};
 
 // https://ratatui.rs/recipes/apps/better-panic/
 pub fn initialize_panic_handler() -> Result<()> {
@@ -26,7 +34,7 @@ pub fn initialize_panic_handler() -> Result<()> {
             // prints human-panic message
             print_msg(file_path.clone(), &meta)
                 .expect("human-panic: printing error message to console failed");
-            use tracing::info;
+
             info!("Full panic dump at: {:?}", file_path);
         }
         eprintln!("Error: {}", strip_ansi_escapes::strip_str(msg));
@@ -43,5 +51,21 @@ pub fn initialize_panic_handler() -> Result<()> {
 
         std::process::exit(libc::EXIT_FAILURE);
     }));
+    Ok(())
+}
+
+pub fn initialize_ctrl_c_handler(proxy: EventLoopProxy<CustomEvent>) -> Result<()> {
+    let running = Arc::new(AtomicUsize::new(0));
+    ctrlc::set_handler(move || {
+        let prev = running.fetch_add(1, Ordering::SeqCst);
+        if prev == 0 {
+            info!("Exiting via Ctrl+C");
+            // If fails, event loop is already closed.
+            let _ = proxy.send_event(CustomEvent::ExitRequested);
+        } else {
+            warn!("Forcibly exiting via Ctrl+C!");
+            std::process::exit(0);
+        }
+    })?;
     Ok(())
 }

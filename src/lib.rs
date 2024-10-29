@@ -19,11 +19,14 @@ use platform::AudioNightmare;
 use std::path::PathBuf;
 use std::time::Instant;
 use tao::event::StartCause;
+use tray_icon::menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::TrayIconEvent;
+use tray_menu::{TrayHelper, QUIT_ID};
 
 use color_eyre::eyre::Result;
 
 use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 use tracing_subscriber::{filter, prelude::*};
 use tracing_subscriber::{fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -94,10 +97,14 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     let event_loop = EventLoopBuilder::<CustomEvent>::with_user_event().build();
     let event_proxy = event_loop.create_proxy();
 
+    panic_handler::initialize_ctrl_c_handler(event_proxy.clone())?;
+
     info!("Starting app... v{}", env!("CARGO_PKG_VERSION"));
 
     let mut app = App::build(event_proxy)?;
 
+    let menu_channel = MenuEvent::receiver();
+    let tray_channel = TrayIconEvent::receiver();
     // Starting off at DEBUG, and setting to whatever user has defined
     // reload_handle.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
 
@@ -105,6 +112,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
 
     // println!("{:#?}", app.processes);
 
+    // TODO handle unwraps properly
     event_loop.run(move |event, _, control_flow| {
         if app.process_watcher_handle.is_finished() {
             let result = app.process_watcher_handle.take().join();
@@ -114,6 +122,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             Event::NewEvents(StartCause::Init) => {
                 *control_flow = ControlFlow::Wait;
                 app.change_devices_if_needed().unwrap();
+                app.tray_menu = Some(TrayHelper::build().unwrap());
             }
             Event::UserEvent(event) => {
                 // println!("user event: {event:?}");
@@ -126,6 +135,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
                 debug!("Event handling took {:?}", instant_2 - instant_1);
             }
             // Timeout for an audio device reaction finished waiting
+            // (nothing else right now uses WaitUntil)
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 debug!("Done waiting for audio endpoint timeout!");
                 app.update_defaults().unwrap();
@@ -145,12 +155,25 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
                 event: WindowEvent::CloseRequested,
                 ..
             } => *control_flow = ControlFlow::Exit,
-            Event::LoopDestroyed => (),
+            Event::LoopDestroyed => {
+                debug!("Event loop destroyed!");
+                app.tray_menu.take();
+                app.back_to_default()
+                    .expect("Failed to return devices to default!");
+            }
             _ => (),
         }
-    });
+        if let Ok(event) = menu_channel.try_recv() {
+            if event.id == QUIT_ID {
+                *control_flow = ControlFlow::Exit;
+            }
+            debug!("Menu Event: {event:?}");
+        }
 
-    // Ok(())
+        if let Ok(event) = tray_channel.try_recv() {
+            debug!("Tray Event: {event:?}");
+        }
+    });
 }
 
 /// Returns the directory that logs, config, and other files should be placed in by default.

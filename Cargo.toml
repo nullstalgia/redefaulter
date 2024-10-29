@@ -36,6 +36,8 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "chrono"] }
 tracing-appender = "0.2"
 tracing-log = "0.2.0"
 rolling-file = "0.2.0"
+human-panic = "2.0.2"
+ctrlc = "3.4.5"
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [dependencies.windows]

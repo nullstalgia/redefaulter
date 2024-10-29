@@ -4,6 +4,7 @@ use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
 use tao::event_loop::EventLoopProxy;
+use tracing::{info, warn};
 use wasapi::*;
 use windows::{
     core::PWSTR,
@@ -233,10 +234,8 @@ impl AudioNightmare {
         let id = String::from(id).to_wide();
         let device: IMMDevice = unsafe { self.device_enumerator.GetDevice(id.as_pwstr())? };
         let endpoint: IMMEndpoint = device.cast()?;
-        let direction: Direction = unsafe { endpoint.GetDataFlow()? }
-            .try_into()
-            .expect("Invalid Enum?");
-        println!("{direction:?}");
+        let direction: Direction = unsafe { endpoint.GetDataFlow()? }.try_into()?;
+        info!("New {direction:?} device!");
         let device: Device = Device::custom(device, direction);
 
         if !known_to_be_active {
@@ -254,12 +253,12 @@ impl AudioNightmare {
         match direction {
             Direction::Capture => {
                 if let Some(old) = self.playback_devices.insert(device.guid.clone(), device) {
-                    println!("Playback device already existed? {old:?}");
+                    warn!("Playback device already existed? {old:?}");
                 };
             }
             Direction::Render => {
                 if let Some(old) = self.recording_devices.insert(device.guid.clone(), device) {
-                    println!("Recording device already existed? {old:?}");
+                    warn!("Recording device already existed? {old:?}");
                 };
             }
         }
@@ -408,8 +407,7 @@ impl AudioNightmare {
 
         for (device, roles) in roles.iter() {
             if !device.guid.is_empty() {
-                // debug!("");
-                println!("Setting {} -> {roles:?}", device.human_name);
+                info!("Setting {} -> {roles:?}", device.human_name);
                 for role in roles {
                     self.set_device_role(&device.guid, role)?;
                 }

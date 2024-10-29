@@ -19,6 +19,7 @@ use crate::{
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
     settings::Config,
+    tray_menu::TrayHelper,
 };
 
 #[derive(Debug)]
@@ -26,6 +27,7 @@ pub enum CustomEvent {
     ProcessesChanged,
     AudioEndpointUpdate,
     AudioEndpointNotification(AudioEndpointNotification),
+    ExitRequested,
 }
 
 pub struct App {
@@ -41,6 +43,9 @@ pub struct App {
     current_defaults: DeviceSet<Discovered>,
 
     active_profiles: Vec<AppOverride>,
+
+    // Option instead of Takeable due to late initialization in EventLoop Init
+    pub tray_menu: Option<TrayHelper>,
 
     config: Config,
     config_path: PathBuf,
@@ -101,6 +106,7 @@ impl App {
             active_profiles,
             config,
             config_path,
+            tray_menu: None,
         })
     }
     /// Run through all of the running processes and find which ones match the user's profiles
@@ -157,9 +163,6 @@ impl App {
     fn update_active_profiles(&mut self) {
         self.active_profiles = self.determine_active_profiles();
     }
-    pub fn generate_device_actions(&self) -> Option<DeviceSet<Discovered>> {
-        self.get_damaged_devices(self.active_profiles.clone())
-    }
     /// Handle our defined `CustomEvent`s coming in from the platform and our tasks
     pub fn handle_custom_event(
         &mut self,
@@ -190,6 +193,9 @@ impl App {
                 self.change_devices_if_needed()?;
                 *control_flow = ControlFlow::Wait;
             }
+            ExitRequested => {
+                *control_flow = ControlFlow::Exit;
+            }
         }
         Ok(())
     }
@@ -199,9 +205,15 @@ impl App {
         Ok(())
     }
     pub fn change_devices_if_needed(&mut self) -> AppResult<()> {
-        if let Some(actions) = self.generate_device_actions() {
+        if let Some(actions) = self.get_damaged_devices(self.active_profiles.clone()) {
             self.endpoints.change_devices(actions)?;
             self.update_defaults()?;
+        }
+        Ok(())
+    }
+    pub fn back_to_default(&self) -> AppResult<()> {
+        if let Some(actions) = self.get_damaged_devices(Vec::new()) {
+            self.endpoints.change_devices(actions)?;
         }
         Ok(())
     }

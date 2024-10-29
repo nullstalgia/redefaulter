@@ -18,6 +18,12 @@ pub enum RedefaulterError {
     TomlSer(#[from] toml::ser::Error),
     #[error("TOML Deserialization Error: {0}")]
     TomlDe(#[from] toml::de::Error),
+    #[error("Tray Error: {0}")]
+    Tray(#[from] tray_icon::Error),
+    #[error("Tray Menu Error: {0}")]
+    TrayMenu(#[from] tray_icon::menu::Error),
+    #[error("Icon Error: {0}")]
+    TrayIcon(#[from] tray_icon::BadIcon),
     // My errors
     #[error("Failed to get active processes")]
     FailedToGetProcesses,

@@ -82,6 +82,7 @@ pub fn process_event_loop(
             path == exe_path.as_path()
         })
         .count();
+    // TODO: Maybe change this to writing a PID in the working dir?
     let instance_already_exists = redefaulter_count > 1;
 
     map_updated

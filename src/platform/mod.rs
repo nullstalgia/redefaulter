@@ -1,11 +1,12 @@
 #[cfg(target_os = "windows")]
 mod windows;
-use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
 pub use windows::{
     device_notifications::WindowsAudioNotification as AudioEndpointNotification, AudioNightmare,
     ConfigDevice, DeviceSet, DiscoveredDevice, PlatformConfig,
 };
+
+use serde::{Deserialize, Serialize};
 
 // I don't plan on doing this, but I'd rather over-engineer a little to prevent either myself
 // or someone else some future pain.
