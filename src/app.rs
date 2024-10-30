@@ -20,7 +20,7 @@ use crate::{
     platform::{AudioEndpointNotification, AudioNightmare, ConfigEntry, DeviceSet, Discovered},
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
-    settings::Config,
+    settings::Settings,
     tray_menu::TrayHelper,
 };
 
@@ -50,7 +50,7 @@ pub struct App {
     // Or possible non-initialization in the case of CLI commands
     pub tray_menu: Option<TrayHelper>,
 
-    config: Config,
+    pub settings: Settings,
     config_path: PathBuf,
 }
 
@@ -89,7 +89,7 @@ impl App {
             .expect("Failed to build config name");
         let config_path = PathBuf::from(config_name);
 
-        let config = Config::load(&config_path, false)?;
+        let config = Settings::load(&config_path, false)?;
 
         let endpoints = AudioNightmare::build(Some(event_proxy), Some(&config.devices))?;
 
@@ -107,7 +107,7 @@ impl App {
             config_defaults,
             current_defaults,
             active_profiles,
-            config,
+            settings: config,
             config_path,
             tray_menu: None,
         })

@@ -18,9 +18,13 @@ recording_comms = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-09
 ### Windows-specific options
 
 - `unify_communications_devices` - Any actions a profile takes towards a role, will also apply to the Communications variant of it.
-  - All communications entries are ignored, higher priority files that change just communications device will be ignored.
+  - When true, all communications entries are ignored. Any higher priority profile entries that change only communications device will be ignored.
 
 ## Profiles
+
+Profiles priorities are sorted by filename. An example of this is if profile `00-vrserver` and `01-notepad` are *both* active and are setting the same role, `00-vrserver`'s device will take priority.
+
+If a device in a higher priority cannot be found, it will try to fall back to lower priority active profile's devices.
 
 Example:
 

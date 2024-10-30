@@ -72,9 +72,9 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         .with_timer(time_fmt)
         .with_line_number(true)
         .with_filter(filter::LevelFilter::DEBUG);
-    let (fmt_layer_file, _reload_handle_file) =
+    let (fmt_layer_file, reload_handle_file) =
         tracing_subscriber::reload::Layer::new(fmt_layer_file);
-    let (fmt_layer_stdout, _reload_handle_stdout) =
+    let (fmt_layer_stdout, reload_handle_stdout) =
         tracing_subscriber::reload::Layer::new(fmt_layer_stdout);
     let env_filter = tracing_subscriber::EnvFilter::new("trace");
     tracing_subscriber::registry()
@@ -106,7 +106,8 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     let menu_channel = MenuEvent::receiver();
     let tray_channel = TrayIconEvent::receiver();
     // Starting off at DEBUG, and setting to whatever user has defined
-    // reload_handle.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
+    reload_handle_file.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
+    reload_handle_stdout.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
 
     // println!("{:#?}", app.generate_device_actions());
 

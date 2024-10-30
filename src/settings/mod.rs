@@ -1,24 +1,34 @@
 use std::io::{Read, Write};
 use std::path::Path;
+use std::str::FromStr;
 
 use fs_err::File;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use tracing::level_filters::LevelFilter;
 
 use crate::errors::AppResult;
 use crate::platform::PlatformConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Config {
+pub struct MiscSettings {
+    #[serde(default)]
+    pub log_level: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Settings {
+    #[serde(default)]
+    pub misc: MiscSettings,
     #[serde(default)]
     pub devices: PlatformConfig,
     // pub updates: AutoUpdateSettings
 }
 
-impl Config {
+impl Settings {
     pub fn load(path: &Path, required: bool) -> AppResult<Self> {
         if !path.exists() && !required {
-            let default = Config::default();
+            let default = Settings::default();
             default.save(path)?;
             return Ok(default);
         } else if !path.exists() && required {
@@ -29,7 +39,7 @@ impl Config {
         let mut buffer = String::new();
         file.read_to_string(&mut buffer)?;
         drop(file);
-        let config: Config = toml::from_str(&buffer)?;
+        let config: Settings = toml::from_str(&buffer)?;
         config.save(path)?;
         Ok(config)
     }
@@ -42,6 +52,9 @@ impl Config {
         file.flush()?;
         file.sync_all()?;
         Ok(())
+    }
+    pub fn get_log_level(&self) -> LevelFilter {
+        LevelFilter::from_str(&self.misc.log_level).unwrap_or(LevelFilter::DEBUG)
     }
 }
 
