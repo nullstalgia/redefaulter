@@ -21,7 +21,7 @@ use std::time::Instant;
 use tao::event::StartCause;
 use tray_icon::menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::TrayIconEvent;
-use tray_menu::{TrayHelper, QUIT_ID};
+use tray_menu::{TrayHelper, QUIT_ID, RELOAD_ID};
 
 use color_eyre::eyre::Result;
 
@@ -113,6 +113,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     // println!("{:#?}", app.processes);
 
     // TODO handle unwraps properly
+    // TODO Move this handler into `app` maybe?
     event_loop.run(move |event, _, control_flow| {
         if app.process_watcher_handle.is_finished() {
             let result = app.process_watcher_handle.take().join();
@@ -121,8 +122,9 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         match event {
             Event::NewEvents(StartCause::Init) => {
                 *control_flow = ControlFlow::Wait;
-                app.change_devices_if_needed().unwrap();
                 app.tray_menu = Some(TrayHelper::build().unwrap());
+                app.update_active_profiles(true).unwrap();
+                app.change_devices_if_needed().unwrap();
             }
             Event::UserEvent(event) => {
                 // println!("user event: {event:?}");
@@ -164,8 +166,15 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             _ => (),
         }
         if let Ok(event) = menu_channel.try_recv() {
-            if event.id == QUIT_ID {
-                *control_flow = ControlFlow::Exit;
+            match event.id.as_ref() {
+                QUIT_ID => {
+                    *control_flow = ControlFlow::Exit;
+                }
+                RELOAD_ID => {
+                    // TODO Popup when failing to read a file?
+                    app.reload_profiles().unwrap();
+                }
+                _ => (),
             }
             debug!("Menu Event: {event:?}");
         }

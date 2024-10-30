@@ -1,3 +1,7 @@
+use super::TrayHelper;
+
+impl TrayHelper {}
+
 // #![allow(unused)]
 
 // use tray_icon::{

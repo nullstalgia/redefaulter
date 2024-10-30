@@ -1,4 +1,6 @@
 use std::{
+    collections::BTreeMap,
+    ffi::OsString,
     path::PathBuf,
     sync::{
         mpsc::{self},
@@ -42,9 +44,10 @@ pub struct App {
     pub config_defaults: DeviceSet<ConfigEntry>,
     current_defaults: DeviceSet<Discovered>,
 
-    active_profiles: Vec<AppOverride>,
+    active_profiles: BTreeMap<OsString, AppOverride>,
 
     // Option instead of Takeable due to late initialization in EventLoop Init
+    // Or possible non-initialization in the case of CLI commands
     pub tray_menu: Option<TrayHelper>,
 
     config: Config,
@@ -94,7 +97,7 @@ impl App {
 
         let current_defaults = endpoints.get_current_defaults()?;
 
-        let active_profiles = Vec::new();
+        let active_profiles = BTreeMap::new();
 
         Ok(Self {
             endpoints,
@@ -110,21 +113,19 @@ impl App {
         })
     }
     /// Run through all of the running processes and find which ones match the user's profiles
-    pub fn determine_active_profiles(&self) -> Vec<AppOverride> {
-        // TODO make more memory efficient
-        let mut remaining_profiles = self.profiles.inner.clone();
-        let mut active_profiles = Vec::new();
-        // let total_profiles = self.profiles.inner.len();
+    pub fn determine_active_profiles(&self) -> BTreeMap<&OsString, &AppOverride> {
+        let mut active_profiles = BTreeMap::new();
+        let total_profiles = self.profiles.inner.len();
         for process in self.processes.iter() {
-            if remaining_profiles.is_empty() {
+            if active_profiles.len() == total_profiles {
                 break;
             }
-            // TODO not check already matched profiles
             for (profile_name, profile) in self.profiles.inner.iter() {
+                if active_profiles.contains_key(profile_name) {
+                    continue;
+                }
                 if process.profile_matches(profile) {
-                    if let Some((_, val)) = remaining_profiles.remove_entry(profile_name) {
-                        active_profiles.push(val);
-                    };
+                    active_profiles.insert(profile_name, profile);
                     break;
                 }
             }
@@ -138,19 +139,28 @@ impl App {
     /// on top of each other, discarding any devices that aren't connected to the system.
     pub fn get_damaged_devices(
         &self,
-        active_profiles: Vec<AppOverride>,
+        active_profiles: &BTreeMap<OsString, AppOverride>,
     ) -> Option<DeviceSet<Discovered>> {
-        let config_default_once = std::iter::once(self.config_defaults.clone().into());
-        let profiles = active_profiles.into_iter().chain(config_default_once).rev();
+        // let defaults: AppOverride = self.config_defaults.clone().into();
+        // let config_default_once = std::iter::once(&defaults);
+        // let profiles = active_profiles.values().chain(config_default_once).rev();
+
+        let config_default_once = std::iter::once(&self.config_defaults);
+        let profiles = active_profiles
+            .values()
+            .map(|p| &p.override_set)
+            .chain(config_default_once)
+            .rev();
 
         // TODO Consider a DeviceActions type with Options on the Strings
         let mut device_actions = DeviceSet::<Discovered>::default();
 
         for profile in profiles {
             self.endpoints
-                .overlay_available_devices(&mut device_actions, &profile.override_set);
+                .overlay_available_devices(&mut device_actions, profile);
         }
 
+        // Don't set a device action for a role that's already properly set
         self.endpoints
             .discard_healthy(&mut device_actions, &self.current_defaults);
 
@@ -160,8 +170,25 @@ impl App {
             Some(device_actions)
         }
     }
-    fn update_active_profiles(&mut self) {
-        self.active_profiles = self.determine_active_profiles();
+    // TODO find more graceful way to do the initial/force update
+    pub fn update_active_profiles(&mut self, force_update: bool) -> AppResult<()> {
+        let new_profiles = self.determine_active_profiles();
+        let length_changed = new_profiles.len() != self.active_profiles.len();
+        let profiles_changed = new_profiles
+            .keys()
+            .any(|n| !self.active_profiles.contains_key(*n));
+        // Only update menu and local map when damaged
+        if force_update || length_changed || profiles_changed {
+            self.active_profiles = new_profiles
+                .into_iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            if let Some(menu) = self.tray_menu.as_mut() {
+                menu.update_profiles(&self.active_profiles)?;
+            }
+        }
+        Ok(())
     }
     /// Handle our defined `CustomEvent`s coming in from the platform and our tasks
     pub fn handle_custom_event(
@@ -189,7 +216,7 @@ impl App {
             // A process has opened or closed
             ProcessesChanged => {
                 // Only need to call this when processes change
-                self.update_active_profiles();
+                self.update_active_profiles(false)?;
                 self.change_devices_if_needed()?;
                 *control_flow = ControlFlow::Wait;
             }
@@ -205,16 +232,22 @@ impl App {
         Ok(())
     }
     pub fn change_devices_if_needed(&mut self) -> AppResult<()> {
-        if let Some(actions) = self.get_damaged_devices(self.active_profiles.clone()) {
+        if let Some(actions) = self.get_damaged_devices(&self.active_profiles) {
             self.endpoints.change_devices(actions)?;
             self.update_defaults()?;
         }
         Ok(())
     }
     pub fn back_to_default(&self) -> AppResult<()> {
-        if let Some(actions) = self.get_damaged_devices(Vec::new()) {
+        if let Some(actions) = self.get_damaged_devices(&BTreeMap::new()) {
             self.endpoints.change_devices(actions)?;
         }
+        Ok(())
+    }
+    pub fn reload_profiles(&mut self) -> AppResult<()> {
+        self.profiles.load_from_default_dir()?;
+        self.update_active_profiles(false)?;
+        self.change_devices_if_needed()?;
         Ok(())
     }
 }

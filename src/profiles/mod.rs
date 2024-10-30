@@ -35,13 +35,15 @@ impl Profiles {
         };
 
         if dir.exists() {
-            profiles.load_from_dir(&dir)?;
+            profiles.load_from_default_dir()?;
         }
 
         Ok(profiles)
     }
     /// Will replace all existing profiles if successful.
-    pub fn load_from_dir(&mut self, dir: &Path) -> AppResult<()> {
+    pub fn load_from_default_dir(&mut self) -> AppResult<()> {
+        let dir = PathBuf::from(PROFILES_PATH);
+        // TODO Missing folder check
         let mut dir = fs::read_dir(dir)?;
         let mut new_map = BTreeMap::new();
         while let Some(Ok(file)) = dir.next() {
