@@ -77,7 +77,7 @@ impl From<DeviceSet<ConfigEntry>> for AppOverride {
 }
 
 fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
-    let file_name = path.file_name().expect("File has no name?").to_owned();
+    let file_name = path.file_stem().expect("File has no name?").to_owned();
     let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?)?;
     // TODO handle empty path
     Ok((file_name, profile))
