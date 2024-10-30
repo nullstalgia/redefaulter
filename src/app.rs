@@ -185,7 +185,7 @@ impl App {
                 .collect();
 
             if let Some(menu) = self.tray_menu.as_mut() {
-                menu.update_profiles(&self.active_profiles)?;
+                menu.update_profiles(self.profiles.len(), &self.active_profiles)?;
             }
         }
         Ok(())
