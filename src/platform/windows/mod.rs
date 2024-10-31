@@ -251,12 +251,12 @@ impl AudioNightmare {
         let device: DiscoveredDevice = device.try_into()?;
 
         match direction {
-            Direction::Capture => {
+            Direction::Render => {
                 if let Some(old) = self.playback_devices.insert(device.guid.clone(), device) {
                     warn!("Playback device already existed? {old:?}");
                 };
             }
-            Direction::Render => {
+            Direction::Capture => {
                 if let Some(old) = self.recording_devices.insert(device.guid.clone(), device) {
                     warn!("Recording device already existed? {old:?}");
                 };
