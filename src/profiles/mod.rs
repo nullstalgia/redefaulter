@@ -41,9 +41,14 @@ impl Profiles {
         Ok(profiles)
     }
     /// Will replace all existing profiles if successful.
+    ///
+    /// If an error occurs, the previous profiles are retained.
     pub fn load_from_default_dir(&mut self) -> AppResult<()> {
         let dir = PathBuf::from(PROFILES_PATH);
-        // TODO Missing folder check
+        if !dir.exists() {
+            self.inner.clear();
+            return Ok(());
+        }
         let mut dir = fs::read_dir(dir)?;
         let mut new_map = BTreeMap::new();
         while let Some(Ok(file)) = dir.next() {
@@ -68,6 +73,7 @@ impl Profiles {
 }
 
 impl From<DeviceSet<ConfigEntry>> for AppOverride {
+    // Used to build a "profile" for the app's config file's defaults
     fn from(value: DeviceSet<ConfigEntry>) -> Self {
         Self {
             process_path: PathBuf::new(),
@@ -76,9 +82,9 @@ impl From<DeviceSet<ConfigEntry>> for AppOverride {
     }
 }
 
+/// Deserializes toml config into an [AppOverride]
 fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
     let file_name = path.file_stem().expect("File has no name?").to_owned();
     let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?)?;
-    // TODO handle empty path
     Ok((file_name, profile))
 }

@@ -4,11 +4,17 @@ use std::str::FromStr;
 
 use fs_err::File;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 use tracing::level_filters::LevelFilter;
+use tracing::*;
 
 use crate::errors::AppResult;
 use crate::platform::PlatformConfig;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BehaviorSettings {
+    #[serde(default)]
+    pub always_save_generics: bool,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MiscSettings {
@@ -18,6 +24,8 @@ pub struct MiscSettings {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
+    #[serde(default)]
+    pub redefaulter: BehaviorSettings,
     #[serde(default)]
     pub misc: MiscSettings,
     #[serde(default)]

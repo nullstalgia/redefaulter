@@ -13,7 +13,7 @@ use std::{
 use dashmap::DashMap;
 use takeable::Takeable;
 use tao::event_loop::{ControlFlow, EventLoopProxy};
-use tracing::debug;
+use tracing::*;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
@@ -51,7 +51,11 @@ pub struct App {
     pub tray_menu: Option<TrayHelper>,
 
     pub settings: Settings,
-    config_path: PathBuf,
+    // config_path: PathBuf,
+
+    // To prevent fighting with something else messing with devices
+    // changes_within_few_seconds: usize,
+    // last_change: Instant,
 }
 
 // TODO check for wrestling with other apps
@@ -89,11 +93,11 @@ impl App {
             .expect("Failed to build config name");
         let config_path = PathBuf::from(config_name);
 
-        let config = Settings::load(&config_path, false)?;
+        let settings = Settings::load(&config_path, false)?;
 
-        let endpoints = AudioNightmare::build(Some(event_proxy), Some(&config.devices))?;
+        let endpoints = AudioNightmare::build(Some(event_proxy), Some(&settings.devices))?;
 
-        let config_defaults = config.devices.default_devices.clone();
+        let config_defaults = settings.devices.default_devices.clone();
 
         let current_defaults = endpoints.get_current_defaults()?;
 
@@ -107,8 +111,7 @@ impl App {
             config_defaults,
             current_defaults,
             active_profiles,
-            settings: config,
-            config_path,
+            settings,
             tray_menu: None,
         })
     }
@@ -141,10 +144,6 @@ impl App {
         &self,
         active_profiles: &BTreeMap<OsString, AppOverride>,
     ) -> Option<DeviceSet<Discovered>> {
-        // let defaults: AppOverride = self.config_defaults.clone().into();
-        // let config_default_once = std::iter::once(&defaults);
-        // let profiles = active_profiles.values().chain(config_default_once).rev();
-
         let config_default_once = std::iter::once(&self.config_defaults);
         let profiles = active_profiles
             .values()
@@ -170,6 +169,9 @@ impl App {
             Some(device_actions)
         }
     }
+    /// Check running processes and update active profiles. Also sends new profiles to tray menu.
+    ///
+    /// Only need to call this when processes change
     // TODO find more graceful way to do the initial/force update
     pub fn update_active_profiles(&mut self, force_update: bool) -> AppResult<()> {
         let new_profiles = self.determine_active_profiles();
@@ -215,7 +217,6 @@ impl App {
             }
             // A process has opened or closed
             ProcessesChanged => {
-                // Only need to call this when processes change
                 self.update_active_profiles(false)?;
                 self.change_devices_if_needed()?;
                 *control_flow = ControlFlow::Wait;

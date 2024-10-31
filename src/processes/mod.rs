@@ -3,13 +3,12 @@ use crate::errors::{AppResult, RedefaulterError};
 use crate::profiles::AppOverride;
 
 use dashmap::DashMap;
-use serde::{Deserialize, Deserializer};
-use std::ffi::OsString;
+use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, sync::mpsc::Sender};
 use tao::event_loop::EventLoopProxy;
-use tracing::{debug, trace};
+use tracing::*;
 use wmi::*;
 
 // Inspired by https://users.rust-lang.org/t/watch-for-windows-process-creation-in-rust/98603/2
@@ -20,6 +19,8 @@ struct ProcessEvent {
     target_instance: Process,
 }
 
+// There's a chance that using PathBuf here might bite me in the ass?
+// https://github.com/serde-rs/json/issues/550
 #[derive(Deserialize, Debug)]
 #[serde(rename = "Win32_Process")]
 #[serde(rename_all = "PascalCase")]
@@ -33,28 +34,48 @@ pub struct Process {
 impl Process {
     pub fn profile_matches(&self, profile: &AppOverride) -> bool {
         let needs_path = profile.process_path.is_absolute();
-        // println!(
-        //     "{:?} {:?} {:?}",
-        //     self.executable_path, profile.process_path, needs_path
-        // );
+
         match self.executable_path.as_ref() {
             // Expecting an absolute path
             None if needs_path => false,
             Some(path) if needs_path => *path == profile.process_path,
-            // If not an absolute path, then see if the name matches
+            // If not expecting an absolute path, then see if the name matches
             None => self.name == profile.process_path,
             Some(_) => self.name == profile.process_path,
         }
     }
 }
 
-fn to_os_string<'de, D>(deserializer: D) -> Result<OsString, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let buf: String = Deserialize::deserialize(deserializer)?;
-    Ok(OsString::from(buf))
-}
+// Some(path) if needs_path => path.lossy_lowercase_cmp(&profile.process_path),
+
+// trait LossyLowercaseCheck {
+//     fn lossy_lowercase_cmp(&self, other: &PathBuf) -> bool;
+// }
+
+// impl LossyLowercaseCheck for PathBuf {
+//     fn lossy_lowercase_cmp(&self, other: &PathBuf) -> bool {
+//         match (self.to_str(), other.to_str()) {
+//             // If we can get proper Unicode from the Path, do a case-insensitive match
+//             (Some(l), Some(r)) => {
+//                 debug!("Checking {l} vs {r}");
+//                 l.eq_ignore_ascii_case(r)
+//             }
+//             // But if we can't, just check them directly
+//             _ => {
+//                 debug!("Failed to get str?");
+//                 self == other
+//             }
+//         }
+//     }
+// }
+
+// fn to_os_string<'de, D>(deserializer: D) -> Result<OsString, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     let buf: String = Deserialize::deserialize(deserializer)?;
+//     Ok(OsString::from(buf))
+// }
 
 /// Task that updates a DashMap with the current running processes,
 /// notifying the supplied EventLoopProxy when any change occurs.

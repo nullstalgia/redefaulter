@@ -1,0 +1,5 @@
+process_path = "vrserver.exe"
+playback = "Speakers (Beyond Audio Strap)"
+recording = "Microphone (Beyond)"
+
+# I wrote this whole app just to make this one profile work :)

@@ -1,8 +1,7 @@
 use std::{collections::BTreeMap, ffi::OsString};
 
-use tracing::debug;
 use tray_icon::{
-    menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
+    menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     Icon, TrayIcon, TrayIconBuilder,
 };
 
@@ -25,14 +24,15 @@ impl TrayHelper {
 
         let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
         let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
+        let loading = MenuItem::new(format!("Loading profiles..."), false, None);
 
         menu.append_items(&[
+            &loading,
             &PredefinedMenuItem::separator(),
             &reload,
             &PredefinedMenuItem::separator(),
             &quit,
         ])?;
-
         // drop(quit_i);
 
         // Add a copy to the struct if we start changing the icon?
@@ -44,7 +44,6 @@ impl TrayHelper {
         // to prevent issues like https://github.com/tauri-apps/tray-icon/issues/90
         let handle = TrayIconBuilder::new()
             .with_menu(Box::new(menu.clone()))
-            // TODO Show number of actives profiles in tooltip
             .with_tooltip(initial_tooltip)
             .with_icon(initial_icon)
             .build()?;
@@ -62,6 +61,8 @@ impl TrayHelper {
         self.handle.set_menu(Some(Box::new(new_menu)));
         Ok(())
     }
+    // Regenerate menu each time? or on click...
+    // Right now it's on each profile change
     pub fn build_menu(
         &mut self,
         total_profiles: usize,

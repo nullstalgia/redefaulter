@@ -5,9 +5,9 @@ use std::sync::{
 
 use color_eyre::eyre::Result;
 use tao::event_loop::EventLoopProxy;
-use tracing::{error, info, warn};
+use tracing::*;
 
-use crate::{app::CustomEvent, errors::RedefaulterError};
+use crate::app::CustomEvent;
 
 // https://ratatui.rs/recipes/apps/better-panic/
 pub fn initialize_panic_handler() -> Result<()> {
@@ -27,7 +27,6 @@ pub fn initialize_panic_handler() -> Result<()> {
         {
             eprintln!("{}", msg); // prints color-eyre stack trace to stderr
             use human_panic::{handle_dump, print_msg, Metadata};
-            use tracing::info;
             let meta = Metadata::new(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 
             let file_path = handle_dump(&meta, panic_info);

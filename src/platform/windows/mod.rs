@@ -4,7 +4,7 @@ use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
 use tao::event_loop::EventLoopProxy;
-use tracing::{info, warn};
+use tracing::*;
 use wasapi::*;
 use windows::{
     core::PWSTR,
@@ -229,7 +229,6 @@ impl AudioNightmare {
             }
         }
     }
-
     fn add_endpoint(&mut self, id: &str, known_to_be_active: bool) -> AppResult<()> {
         let id = String::from(id).to_wide();
         let device: IMMDevice = unsafe { self.device_enumerator.GetDevice(id.as_pwstr())? };
@@ -269,7 +268,6 @@ impl AudioNightmare {
         if self.playback_devices.remove(id).is_none() {
             self.recording_devices.remove(id);
         }
-        // todo!();
         Ok(())
     }
     pub fn handle_endpoint_notification(
@@ -277,6 +275,7 @@ impl AudioNightmare {
         notif: WindowsAudioNotification,
     ) -> AppResult<()> {
         use WindowsAudioNotification::*;
+        debug!("{notif:?}");
         match notif {
             DeviceAdded { id } => self.add_endpoint(&id, false)?,
             DeviceRemoved { id } => self.remove_endpoint(&id)?,
@@ -297,7 +296,11 @@ impl AudioNightmare {
         }
         Ok(())
     }
-    /// Gets device by name, ignoring any numeric prefix added by Windows
+    /// Gets device by name,
+    /// if no numeric prefix (e.g. `3- `) is supplied in the name,
+    /// will return first device that matches regardless of prefix
+    ///
+    /// If one is supplied, will match for that name specifically
     pub fn device_by_name_fuzzy<'a>(
         &'a self,
         direction: &Direction,
@@ -326,6 +329,7 @@ impl AudioNightmare {
             Direction::Capture => self.recording_devices.get(guid),
         }
     }
+    // Bit of a slow operation, queries Windows for all four roles individually.
     pub fn get_current_defaults(&self) -> AppResult<DeviceSet<Discovered>> {
         use wasapi::Direction::*;
         use wasapi::Role::*;
@@ -345,6 +349,7 @@ impl AudioNightmare {
             recording_comms,
         })
     }
+    /// Tries to find device by GUID first, and then by name
     fn try_find_device(
         &self,
         direction: &Direction,
@@ -353,41 +358,49 @@ impl AudioNightmare {
         self.device_by_guid(direction, &needle.guid)
             .or_else(|| self.device_by_name_fuzzy(direction, &needle.human_name))
     }
+    /// Given an input of desired devices from an active profile,
+    /// search our lists of known connected and active devices,
+    /// and "overlay" the devices we were able to find on top
+    /// of the given action set.
     pub fn overlay_available_devices(
         &self,
-        left: &mut DeviceSet<Discovered>,
-        right: &DeviceSet<ConfigEntry>,
+        actions: &mut DeviceSet<Discovered>,
+        desired: &DeviceSet<ConfigEntry>,
     ) {
         use wasapi::Direction::*;
-        let update_device = |left: &mut DiscoveredDevice, right: &ConfigDevice| {
-            if let Some(device) = self.try_find_device(&Render, right) {
-                *left = device.clone();
-            }
-        };
+        let update_device =
+            |direction: &Direction, actions: &mut DiscoveredDevice, desired: &ConfigDevice| {
+                if let Some(device) = self.try_find_device(direction, desired) {
+                    *actions = device.clone();
+                }
+            };
 
-        update_device(&mut left.playback, &right.playback);
+        update_device(&Render, &mut actions.playback, &desired.playback);
         if self.unify_communications_devices {
-            left.playback_comms = left.playback.clone();
+            actions.playback_comms = actions.playback.clone();
         } else {
-            update_device(&mut left.playback_comms, &right.playback_comms);
+            update_device(
+                &Render,
+                &mut actions.playback_comms,
+                &desired.playback_comms,
+            );
         }
 
-        let update_device = |left: &mut DiscoveredDevice, right: &ConfigDevice| {
-            if let Some(device) = self.try_find_device(&Capture, right) {
-                *left = device.clone();
-            }
-        };
-
-        update_device(&mut left.recording, &right.recording);
+        update_device(&Capture, &mut actions.recording, &desired.recording);
         if self.unify_communications_devices {
-            left.recording_comms = left.recording.clone();
+            actions.recording_comms = actions.recording.clone();
         } else {
-            update_device(&mut left.recording_comms, &right.recording_comms);
+            update_device(
+                &Capture,
+                &mut actions.recording_comms,
+                &desired.recording_comms,
+            );
         }
     }
+    /// Used after laying all active profiles on top of one another to remove any redundant actions.
     pub fn discard_healthy(&self, left: &mut DeviceSet<Discovered>, right: &DeviceSet<Discovered>) {
         let clear_if_matching = |l: &mut DiscoveredDevice, r: &DiscoveredDevice| {
-            if l == r {
+            if l.guid == r.guid {
                 l.clear();
             }
         };
@@ -417,7 +430,7 @@ impl AudioNightmare {
         Ok(())
     }
     /// Update the Platform handler with the given config
-    pub fn change_config(&mut self, config: &PlatformConfig) {
+    pub fn update_config(&mut self, config: &PlatformConfig) {
         self.unify_communications_devices = config.unify_communications_devices;
     }
 }
@@ -499,32 +512,11 @@ pub struct PlatformConfig {
     pub default_devices: DeviceSet<ConfigEntry>,
 }
 
-// struct AppContext {
-//     config: Config,
-//     overrides: Vec<AppOverride>,
-//     desired_set: DeviceSet,
-//     current_set: DeviceSet,
-//     // To prevent fighting with something else messing with devices
-//     changes_within_few_seconds: usize,
-//     last_change: Instant,
-// }
-
-fn pwstr_eq(a: PWSTR, b: PWSTR) -> bool {
-    let mut offset = 0;
-    loop {
-        let (chr_a, chr_b) = unsafe { (*a.0.add(offset), *b.0.add(offset)) };
-        if chr_a != chr_b {
-            return false;
-        }
-        if chr_a == 0 || chr_b == 0 {
-            return true;
-        }
-        offset += 1;
-    }
-}
-
 // Yoinked from https://gist.github.com/dgellow/fb85229ee8aeabf3844a5f3d38eb445d
 
+// TODO Maybe replace with OsStrExt,
+// since I think encode_wide returns a compatible reference,
+// to help avoid allocating each time we want to talk to Windows
 #[derive(Default)]
 pub struct WideString(pub Vec<u16>);
 
@@ -550,6 +542,6 @@ impl ToWide for String {
 
 impl WideString {
     pub fn as_pwstr(&self) -> PWSTR {
-        PWSTR(self.0.as_ptr() as *mut _)
+        PWSTR(self.0.as_ptr() as *mut u16)
     }
 }

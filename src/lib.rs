@@ -19,14 +19,14 @@ use platform::AudioNightmare;
 use std::path::PathBuf;
 use std::time::Instant;
 use tao::event::StartCause;
-use tray_icon::menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 use tray_menu::{TrayHelper, QUIT_ID, RELOAD_ID};
 
 use color_eyre::eyre::Result;
 
 use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
-use tracing::{debug, error, info, trace};
+use tracing::*;
 use tracing_subscriber::{filter, prelude::*};
 use tracing_subscriber::{fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -83,6 +83,9 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         .with(fmt_layer_stdout)
         .init();
 
+    // TODO Profile-less to just do Comms unification
+
+    // TODO Command to print running process the way WMI sees them?
     if let Some(subcommand) = args.subcommand {
         match subcommand {
             args::SubCommands::List(categories) => {
@@ -108,10 +111,6 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     // Starting off at DEBUG, and setting to whatever user has defined
     reload_handle_file.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
     reload_handle_stdout.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
-
-    // println!("{:#?}", app.generate_device_actions());
-
-    // println!("{:#?}", app.processes);
 
     // TODO handle unwraps properly
     // TODO Move this handler into `app` maybe?
@@ -180,8 +179,8 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             debug!("Menu Event: {event:?}");
         }
 
-        if let Ok(event) = tray_channel.try_recv() {
-            debug!("Tray Event: {event:?}");
+        if let Ok(_event) = tray_channel.try_recv() {
+            // debug!("Tray Event: {event:?}");
         }
     });
 }
@@ -226,7 +225,7 @@ fn get_user_dir() -> Option<PathBuf> {
 
 #[cfg(not(any(debug_assertions, feature = "portable")))]
 fn get_user_dir() -> Option<PathBuf> {
-    if let Some(base_dirs) = BaseDirs::new() {
+    if let Some(base_dirs) = directories::BaseDirs::new() {
         let mut config_dir = base_dirs.config_dir().to_owned();
         config_dir.push(env!("CARGO_PKG_NAME"));
         Some(config_dir)

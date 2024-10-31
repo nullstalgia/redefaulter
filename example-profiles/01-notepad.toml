@@ -1,0 +1,9 @@
+process_path = "notepad.exe"
+# process_path = "C:/Windows/System32/notepad.exe"
+#                            ^ --- May not work due to Windows reporting inconsistent casing for System Executables
+#                                  Your own executables should work fine.
+
+# You don't need to specify all devices in a profile!
+
+recording = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-098}"
+recording_comms = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-098}"

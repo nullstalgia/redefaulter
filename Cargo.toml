@@ -38,6 +38,7 @@ tracing-log = "0.2.0"
 rolling-file = "0.2.0"
 human-panic = "2.0.2"
 ctrlc = "3.4.5"
+directories = "5.0.1"
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [dependencies.windows]
