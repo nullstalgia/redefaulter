@@ -39,6 +39,7 @@ rolling-file = "0.2.0"
 human-panic = "2.0.2"
 ctrlc = "3.4.5"
 directories = "5.0.1"
+menu-macro = { path = "menu-macro" }
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [dependencies.windows]

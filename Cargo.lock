@@ -1553,6 +1553,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "menu-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.79",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2221,6 +2230,7 @@ dependencies = [
  "human-panic",
  "image",
  "libc",
+ "menu-macro",
  "regex-lite",
  "rolling-file",
  "same-file",
