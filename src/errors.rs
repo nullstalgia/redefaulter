@@ -24,6 +24,8 @@ pub enum RedefaulterError {
     TrayMenu(#[from] tray_icon::menu::Error),
     #[error("Icon Error: {0}")]
     TrayIcon(#[from] tray_icon::BadIcon),
+    #[error("Opener Error: {0}")]
+    Opener(#[from] opener::OpenError),
     // My errors
     #[error("Failed to get active processes")]
     FailedToGetProcesses,

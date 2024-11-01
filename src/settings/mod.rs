@@ -8,7 +8,7 @@ use tracing::level_filters::LevelFilter;
 use tracing::*;
 
 use crate::errors::AppResult;
-use crate::platform::PlatformConfig;
+use crate::platform::PlatformSettings;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BehaviorSettings {
@@ -29,7 +29,8 @@ pub struct Settings {
     #[serde(default)]
     pub misc: MiscSettings,
     #[serde(default)]
-    pub devices: PlatformConfig,
+    #[serde(rename = "devices")]
+    pub platform: PlatformSettings,
     // pub updates: AutoUpdateSettings
 }
 

@@ -21,7 +21,7 @@ use std::time::Instant;
 use tao::event::StartCause;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
-use tray_menu::{TrayHelper, QUIT_ID, RELOAD_ID};
+use tray_menu::TrayHelper;
 
 use color_eyre::eyre::Result;
 
@@ -37,6 +37,7 @@ use tao::{
 
 pub fn run(args: TopLevelCmd) -> Result<()> {
     panic_handler::initialize_panic_handler()?;
+    let ansi_support = enable_ansi_support::enable_ansi_support().is_ok();
     let working_directory = determine_working_directory().ok_or(RedefaulterError::WorkDir)?;
     if !working_directory.exists() {
         fs_err::create_dir(&working_directory)?;
@@ -68,6 +69,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     let fmt_layer_stdout = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking_stdout)
         .with_file(false)
+        .with_ansi(ansi_support)
         .with_target(true)
         .with_timer(time_fmt)
         .with_line_number(true)
@@ -166,17 +168,8 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             _ => (),
         }
         if let Ok(event) = menu_channel.try_recv() {
-            match event.id.as_ref() {
-                QUIT_ID => {
-                    *control_flow = ControlFlow::Exit;
-                }
-                RELOAD_ID => {
-                    // TODO Popup when failing to read a file?
-                    app.reload_profiles().unwrap();
-                }
-                _ => (),
-            }
             debug!("Menu Event: {event:?}");
+            app.handle_tray_menu_event(event, control_flow).unwrap();
         }
 
         if let Ok(_event) = tray_channel.try_recv() {

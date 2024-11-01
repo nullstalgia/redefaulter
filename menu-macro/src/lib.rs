@@ -13,9 +13,10 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
     // for this tip
 
     // requires "extra-traits" feature
-    // panic!("{:#?}", input);
+    // panic!("{input:#?}");
 
     let struct_name = input.ident.clone();
+    let mut optional_prefix = None;
     let mut root_name = input.ident;
 
     for attr in input.attrs {
@@ -27,13 +28,24 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
                 let lit: LitStr = meta.value()?.parse()?;
                 let new_root: String = lit.value();
                 root_name = format_ident!("{new_root}");
-                return Ok(());
+                Ok(())
+            } else if meta.path.is_ident("prefix") {
+                let lit: LitStr = meta.value()?.parse()?;
+                let new_root: String = lit.value();
+                optional_prefix = Some(format_ident!("{new_root}"));
+                Ok(())
             } else {
                 panic!("Unknown path on struct top-level");
             }
         })
         .unwrap();
     }
+
+    let struct_root = if let Some(prefix) = optional_prefix.as_ref() {
+        format_ident!("{prefix}_{root_name}")
+    } else {
+        root_name
+    };
 
     let out = match input.data {
         Data::Struct(s) => {
@@ -43,7 +55,7 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
                 .into_iter()
                 .filter_map(|field| {
                     if let Some(ident) = field.ident {
-                        let mut base_ident = ident.clone();
+                        let mut field_id = ident.clone();
                         for attr in &field.attrs {
                             let mut skip = false;
                             if !attr.path().is_ident("menuid") {
@@ -54,11 +66,11 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
                                 if meta.path.is_ident("rename") {
                                     let lit: LitStr = meta.value()?.parse()?;
                                     let new_id: String = lit.value();
-                                    base_ident = format_ident!("{new_id}");
-                                    return Ok(());
+                                    field_id = format_ident!("{new_id}");
+                                    Ok(())
                                 } else if meta.path.is_ident("skip") {
                                     skip = true;
-                                    return Ok(());
+                                    Ok(())
                                 } else {
                                     panic!("Unknown path on field");
                                 }
@@ -70,7 +82,9 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
                             }
                         }
                         let method_name = format_ident!("{}_menu_id", ident);
-                        let output_id = format_ident!("{root_name}_{base_ident}");
+
+                        let output_id = format_ident!("{struct_root}_{field_id}");
+
                         let doc_string = format!("Returns: `{output_id}`");
                         Some((method_name, doc_string, output_id))
                     } else {
@@ -79,7 +93,19 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
                 })
                 .collect::<Vec<_>>();
 
-            // Generate methods
+            // Generate struct_root method
+            let struct_root_method_name = format_ident!("menu_id_root");
+            let struct_root_doc = format!(
+                "Returns the root of each of this struct's menu_id methods: `{struct_root}`\n\nDefault is the name of the struct."
+            );
+            let struct_root_method = quote! {
+                #[doc = #struct_root_doc]
+                pub fn #struct_root_method_name(&self) -> &'static str {
+                    stringify!(#struct_root)
+                }
+            };
+
+            // Generate per-field methods
             let methods = fields.iter().map(|(method_name, doc_string, output_id)| {
                 let suffix_method = format_ident!("{method_name}_with_suffix");
                 let prefix_method = format_ident!("{method_name}_with_prefix");
@@ -93,12 +119,12 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
 
                     #[doc = #suffix_doc]
                     pub fn #suffix_method<S: AsRef<str>> (&self, suffix: S) -> String {
-                        format!("{}{}", stringify!(#output_id), suffix.as_ref())
+                        format!("{}{}", self.#method_name(), suffix.as_ref())
                     }
 
                     #[doc = #prefix_doc]
                     pub fn #prefix_method<S: AsRef<str>> (&self, prefix: S) -> String {
-                        format!("{}{}", prefix.as_ref(), stringify!(#output_id))
+                        format!("{}{}", prefix.as_ref(), self.#method_name())
                     }
                 }
             });
@@ -106,6 +132,7 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
             // Generate and return the impl block
             quote! {
                 impl #struct_name {
+                    #struct_root_method
                     #(#methods)*
                 }
             }

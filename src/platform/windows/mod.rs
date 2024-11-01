@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 
+use menu_macro::MenuId;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
@@ -72,7 +73,7 @@ impl Drop for AudioNightmare {
 impl AudioNightmare {
     pub fn build(
         event_proxy: Option<EventLoopProxy<CustomEvent>>,
-        config: Option<&PlatformConfig>,
+        config: Option<&PlatformSettings>,
     ) -> AppResult<Self> {
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
@@ -430,7 +431,7 @@ impl AudioNightmare {
         Ok(())
     }
     /// Update the Platform handler with the given config
-    pub fn update_config(&mut self, config: &PlatformConfig) {
+    pub fn update_config(&mut self, config: &PlatformSettings) {
         self.unify_communications_devices = config.unify_communications_devices;
     }
 }
@@ -505,10 +506,13 @@ impl<State> DeviceSet<State> {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PlatformConfig {
+#[derive(Debug, Clone, Default, Serialize, Deserialize, MenuId)]
+// #[menuid(prefix = "meow")]
+pub struct PlatformSettings {
+    #[menuid(rename = "unify")]
     pub unify_communications_devices: bool,
     #[serde(rename = "default")]
+    #[menuid(skip)]
     pub default_devices: DeviceSet<ConfigEntry>,
 }
 

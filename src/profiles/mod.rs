@@ -25,7 +25,7 @@ pub struct Profiles {
     pub inner: BTreeMap<OsString, AppOverride>,
 }
 
-const PROFILES_PATH: &str = "profiles";
+pub const PROFILES_PATH: &str = "profiles";
 
 impl Profiles {
     pub fn build() -> AppResult<Self> {
@@ -36,6 +36,8 @@ impl Profiles {
 
         if dir.exists() {
             profiles.load_from_default_dir()?;
+        } else {
+            fs::create_dir(dir)?;
         }
 
         Ok(profiles)
@@ -47,6 +49,7 @@ impl Profiles {
         let dir = PathBuf::from(PROFILES_PATH);
         if !dir.exists() {
             self.inner.clear();
+            fs::create_dir(dir)?;
             return Ok(());
         }
         let mut dir = fs::read_dir(dir)?;

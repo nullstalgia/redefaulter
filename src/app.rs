@@ -14,6 +14,7 @@ use dashmap::DashMap;
 use takeable::Takeable;
 use tao::event_loop::{ControlFlow, EventLoopProxy};
 use tracing::*;
+use tray_icon::menu::MenuEvent;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
@@ -21,7 +22,7 @@ use crate::{
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
     settings::Settings,
-    tray_menu::TrayHelper,
+    tray_menu::{common_ids::*, TrayHelper},
 };
 
 #[derive(Debug)]
@@ -95,9 +96,9 @@ impl App {
 
         let settings = Settings::load(&config_path, false)?;
 
-        let endpoints = AudioNightmare::build(Some(event_proxy), Some(&settings.devices))?;
+        let endpoints = AudioNightmare::build(Some(event_proxy), Some(&settings.platform))?;
 
-        let config_defaults = settings.devices.default_devices.clone();
+        let config_defaults = settings.platform.default_devices.clone();
 
         let current_defaults = endpoints.get_current_defaults()?;
 
@@ -187,7 +188,11 @@ impl App {
                 .collect();
 
             if let Some(menu) = self.tray_menu.as_mut() {
-                menu.update_profiles(self.profiles.len(), &self.active_profiles)?;
+                menu.update_menu(
+                    self.profiles.len(),
+                    &self.active_profiles,
+                    &self.settings.platform,
+                )?;
             }
         }
         Ok(())
@@ -208,9 +213,10 @@ impl App {
             }
             // Handler processed event, now we can react
             AudioEndpointUpdate => {
-                // Changing default audio devices on windows can trigger several "noisy" events back-to-back,
-                // including when we send our own desired devices.
-                // So instead of instantly reacting to each one, we wait a moment for it to settle down.
+                // Changing default audio devices on Windows can trigger several "noisy" events back-to-back,
+                // including when we set our desired devices' roles.
+                // So instead of reacting to each event instantly (which would cause even more noise we'd react to),
+                // we wait a moment for it to settle down.
                 let delay = Instant::now() + Duration::from_secs(1);
                 debug!("Audio update! Waiting to take action...");
                 *control_flow = ControlFlow::WaitUntil(delay);
