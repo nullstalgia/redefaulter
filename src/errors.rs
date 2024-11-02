@@ -27,6 +27,8 @@ pub enum RedefaulterError {
     #[error("Opener Error: {0}")]
     Opener(#[from] opener::OpenError),
     // My errors
+    #[error("Field not found: {0}")]
+    FieldNotFound(#[from] menu_macro::MenuMacroError),
     #[error("Failed to get active processes")]
     FailedToGetProcesses,
     #[error("Failed to get working directory")]

@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 
-use menu_macro::MenuId;
+use menu_macro::*;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
@@ -506,7 +506,7 @@ impl<State> DeviceSet<State> {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, MenuId)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, MenuToggle, MenuId, TrayChecks)]
 // #[menuid(prefix = "meow")]
 pub struct PlatformSettings {
     #[menuid(rename = "unify")]

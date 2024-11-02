@@ -42,6 +42,7 @@ directories = "5.0.1"
 menu-macro = { path = "menu-macro" }
 enable-ansi-support = "0.2.1"
 opener = { version = "0.7.2", features = ["reveal"] }
+muda = "0.15.2"
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [dependencies.windows]
