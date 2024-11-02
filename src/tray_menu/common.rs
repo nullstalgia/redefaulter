@@ -91,8 +91,8 @@ impl TrayHelper {
         // hide communications role if unify enabled
         // section for editing active profiles
 
-        for item in self.platform_settings(settings) {
-            menu.append(item.as_ref())?;
+        for item in settings.build_check_menu_items() {
+            menu.append(&item)?;
         }
 
         menu.append(&PredefinedMenuItem::separator())?;
@@ -145,7 +145,10 @@ impl App {
                 opener::reveal(PROFILES_PATH)?;
             }
             _ if id.starts_with(self.settings.platform.menu_id_root()) => {
-                self.handle_platform_settings_menu_event(event);
+                self.settings.platform.handle_menu_toggle_event(id)?;
+                self.endpoints.update_config(&self.settings.platform);
+                self.settings.save(&self.config_path)?;
+                debug!("{:#?}", self.settings.platform);
             }
             _ => (),
         }

@@ -507,9 +507,11 @@ impl<State> DeviceSet<State> {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, MenuToggle, MenuId, TrayChecks)]
-// #[menuid(prefix = "meow")]
 pub struct PlatformSettings {
     #[menuid(rename = "unify")]
+    /// Unify Communications Devices
+    ///
+    /// When true, all communications entries are ignored. Any higher priority profile entries that change only communications device will be ignored.
     pub unify_communications_devices: bool,
     #[serde(rename = "default")]
     #[menuid(skip)]

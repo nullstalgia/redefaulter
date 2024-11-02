@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Ident, LitStr};
@@ -26,21 +28,30 @@ pub fn tray_checkboxes_derive(input: TokenStream) -> TokenStream {
             let check_menu_items = named_fields.iter().map(|field_info| {
                 let ProcessedField {
                     original_ident,
-                    id_method_name: _,
-                    doc_string: _,
                     output_menu_id,
+                    field_human_name,
+                    ..
                 } = field_info;
                 quote! {
                     let generated_check_menu_item = muda::CheckMenuItemBuilder::new()
                         .enabled(true)
                         .checked(self.#original_ident)
                         .id(stringify!(#output_menu_id).into())
-                        .text(stringify!(#output_menu_id)).build();
+                        .text(#field_human_name).build();
                 }
             });
+            let human_names: Vec<&String> = named_fields
+                .iter()
+                .map(|field_info| {
+                    let ProcessedField {
+                        field_human_name, ..
+                    } = field_info;
+                    field_human_name
+                })
+                .collect();
 
             // Generate event-handling method
-            let build_checkboxes_doc = "Returns a `Vec<CheckMenuItem>` generated from the struct's bool parameters.\n\nControl generated ids with `#[menuid]` attributes.";
+            let build_checkboxes_doc = format!("Returns a `Vec<CheckMenuItem>` generated from the struct's bool parameters.\n\nControl generated ids with `#[menuid]` attributes.\n\n{human_names:?}");
             let build_checkboxes_method = quote! {
                 #[doc = #build_checkboxes_doc]
                 pub fn build_check_menu_items(&self) -> Vec<muda::CheckMenuItem> {
@@ -57,6 +68,7 @@ pub fn tray_checkboxes_derive(input: TokenStream) -> TokenStream {
 
             // Generate and return the impl block
             quote! {
+                #[automatically_derived]
                 impl #struct_name {
                     #build_checkboxes_method
                 }
@@ -89,9 +101,8 @@ pub fn menu_toggle_derive(input: TokenStream) -> TokenStream {
             let matches = named_fields.iter().map(|field_info| {
                 let ProcessedField {
                     original_ident,
-                    id_method_name: _,
-                    doc_string: _,
                     output_menu_id,
+                    ..
                 } = field_info;
                 quote! {
                     stringify!(#output_menu_id) => {
@@ -118,6 +129,7 @@ pub fn menu_toggle_derive(input: TokenStream) -> TokenStream {
 
             // Generate and return the impl block
             quote! {
+                #[automatically_derived]
                 impl #struct_name {
                     #struct_match_method
                 }
@@ -163,7 +175,7 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
 
             // Generate per-field methods
             let methods = named_fields.iter().map(|field_info| {
-                let ProcessedField { original_ident: _, id_method_name, doc_string, output_menu_id } = field_info;
+                let ProcessedField { id_method_name, doc_string, output_menu_id, .. } = field_info;
                 let suffix_method = format_ident!("{id_method_name}_with_suffix");
                 let prefix_method = format_ident!("{id_method_name}_with_prefix");
                 let suffix_doc = format!("Returns the same as `{id_method_name}` (`{output_menu_id}`), with the supplied string directly appended.");
@@ -188,6 +200,7 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
 
             // Generate and return the impl block
             quote! {
+                #[automatically_derived]
                 impl #struct_name {
                     #struct_root_method
                     #(#methods)*
@@ -246,6 +259,7 @@ fn parse_struct_info(input: &DeriveInput) -> StructInfo {
 
 struct ProcessedField {
     original_ident: Ident,
+    field_human_name: String,
     id_method_name: Ident,
     doc_string: String,
     output_menu_id: Ident,
@@ -297,8 +311,58 @@ fn process_fields(
 
             let output_menu_id = format_ident!("{struct_root}_{field_id}");
 
-            let doc_string = format!("Returns: `{output_menu_id}`");
-            Some(ProcessedField{original_ident, output_menu_id, doc_string, id_method_name})
+            // let field_human_name = ;
+
+            let (doc_string, field_human_name) = {
+                if let Some(human_name) = get_first_doc_comment(&field.attrs) {
+                    (format!("{human_name}\n\nReturns: `{output_menu_id}`"), human_name)
+                } else {
+                    (format!("Returns: `{output_menu_id}`"), output_menu_id.to_string())
+                }
+            };
+
+            Some(ProcessedField{original_ident, output_menu_id, doc_string, field_human_name, id_method_name})
         })
         .collect()
+}
+
+fn get_first_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut output = None;
+    for attr in attrs {
+        if output.is_some() {
+            break;
+        }
+        if attr.path().is_ident("doc") {
+            if let syn::Meta::NameValue(meta_name_value) = attr.meta.borrow() {
+                // Uhhhh, this can probably be done better
+                if let syn::Meta::NameValue(meta_name_value) = attr.meta.borrow() {
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(ref lit_str),
+                        ..
+                    }) = meta_name_value.value
+                    {
+                        let comment: String = lit_str.value().trim().to_owned();
+                        output = Some(comment);
+                    }
+                    // if let syn::Expr::Lit(syn::ExprLit { ref lit, .. }) = meta_name_value.value {
+                    //     if let syn::Lit::Str(ref lit_str) = lit {
+                    //         let comment: String = lit_str.value().trim().to_owned();
+                    //         output = Some(comment);
+                    //     }
+                    // }
+                    break;
+                }
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(ref lit_str),
+                    ..
+                }) = meta_name_value.value
+                {
+                    let comment: String = lit_str.value().trim().to_owned();
+                    output = Some(comment);
+                }
+                break;
+            }
+        }
+    }
+    output
 }

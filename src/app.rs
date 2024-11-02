@@ -52,8 +52,7 @@ pub struct App {
     pub tray_menu: Option<TrayHelper>,
 
     pub settings: Settings,
-    // config_path: PathBuf,
-
+    pub config_path: PathBuf,
     // To prevent fighting with something else messing with devices
     // changes_within_few_seconds: usize,
     // last_change: Instant,
@@ -92,6 +91,7 @@ impl App {
         let config_name = config_name
             .file_name()
             .expect("Failed to build config name");
+
         let config_path = PathBuf::from(config_name);
 
         let settings = Settings::load(&config_path, false)?;
@@ -113,6 +113,7 @@ impl App {
             current_defaults,
             active_profiles,
             settings,
+            config_path,
             tray_menu: None,
         })
     }
