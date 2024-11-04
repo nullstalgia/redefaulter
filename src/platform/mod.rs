@@ -3,7 +3,7 @@ mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::{
     device_notifications::WindowsAudioNotification as AudioEndpointNotification, AudioNightmare,
-    DeviceSet, DiscoveredDevice, PlatformSettings,
+    ConfigDevice, DeviceSet, DiscoveredDevice, PlatformSettings,
 };
 
 use serde::{Deserialize, Serialize};

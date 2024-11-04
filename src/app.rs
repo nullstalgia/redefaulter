@@ -41,7 +41,7 @@ pub struct App {
     // - on-launch devices
     // - config'd devices
     // - never taken into account
-    pub config_defaults: DeviceSet<ConfigEntry>,
+    // pub config_defaults: DeviceSet<ConfigEntry>,
     pub current_defaults: DeviceSet<Discovered>,
 
     pub active_profiles: BTreeMap<OsString, AppOverride>,
@@ -97,7 +97,7 @@ impl App {
 
         let endpoints = AudioNightmare::build(Some(event_proxy), Some(&settings.platform))?;
 
-        let config_defaults = settings.platform.default_devices.clone();
+        // let config_defaults = settings.platform.default_devices.clone();
 
         let current_defaults = endpoints.get_current_defaults()?;
 
@@ -108,7 +108,7 @@ impl App {
             profiles: Profiles::build()?,
             processes,
             process_watcher_handle: Takeable::new(process_watcher_handle),
-            config_defaults,
+            // config_defaults,
             current_defaults,
             active_profiles,
             settings,
@@ -145,7 +145,7 @@ impl App {
         &self,
         active_profiles: &BTreeMap<OsString, AppOverride>,
     ) -> Option<DeviceSet<Discovered>> {
-        let config_default_once = std::iter::once(&self.config_defaults);
+        let config_default_once = std::iter::once(&self.settings.platform.default_devices);
         let profiles = active_profiles
             .values()
             .map(|p| &p.override_set)

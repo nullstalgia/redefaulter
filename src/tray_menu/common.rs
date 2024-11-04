@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, ffi::OsString};
 
-use muda::{CheckMenuItem, IsMenuItem};
+use muda::{CheckMenuItem, IsMenuItem, Submenu};
 use tao::event_loop::ControlFlow;
 use tracing::*;
 use tray_icon::{
@@ -11,7 +11,10 @@ use tray_icon::{
 use crate::{
     app::App,
     errors::AppResult,
-    platform::{AudioNightmare, DeviceSet, Discovered, DiscoveredDevice, PlatformSettings},
+    platform::{
+        AudioNightmare, ConfigDevice, ConfigEntry, DeviceSet, Discovered, DiscoveredDevice,
+        PlatformSettings,
+    },
     profiles::{AppOverride, PROFILES_PATH},
 };
 
@@ -27,8 +30,6 @@ pub mod common_ids {
 pub const TOOLTIP_PREFIX: &str = "Redefaulter";
 
 use common_ids::*;
-
-// TODO Consolidate menu root
 
 impl App {
     pub fn build_tray_late(&self) -> AppResult<TrayIcon> {
@@ -57,14 +58,7 @@ impl App {
 
         Ok(handle)
     }
-    pub fn update_tray_menu(
-        &self,
-        // total_profiles: usize,
-        // active_profiles: &BTreeMap<OsString, AppOverride>,
-        // endpoints: &AudioNightmare,
-        // current_defaults: &DeviceSet<Discovered>,
-        // settings: &PlatformSettings,
-    ) -> AppResult<()> {
+    pub fn update_tray_menu(&self) -> AppResult<()> {
         if let Some(handle) = self.tray_menu.as_ref() {
             let new_tooltip = format!(
                 "{} - {} profiles active",
@@ -79,14 +73,7 @@ impl App {
     }
     // Regenerate menu each time? or on click...
     // Right now it's on each profile change
-    pub fn build_tray_contents(
-        &self,
-        // total_profiles: usize,
-        // active_profiles: &BTreeMap<OsString, AppOverride>,
-        // endpoints: &AudioNightmare,
-        // current_defaults: &DeviceSet<Discovered>,
-        // settings: &PlatformSettings,
-    ) -> AppResult<Menu> {
+    pub fn build_tray_contents(&self) -> AppResult<Menu> {
         let menu = Menu::new();
 
         // settings section
@@ -94,9 +81,9 @@ impl App {
         // hide communications role if unify enabled
         // section for editing active profiles
 
-        for item in self.settings.platform.build_check_menu_items() {
-            menu.append(&item)?;
-        }
+        let settings_submenu = self.build_tray_settings_submenu()?;
+
+        menu.append(&settings_submenu)?;
 
         // wretched de-evolution in the name of dynamic dispatch
 
@@ -112,14 +99,6 @@ impl App {
         //         .map(|item| item as &dyn IsMenuItem)
         //         .collect::<Vec<_>>(),
         // )?;
-
-        menu.append(&PredefinedMenuItem::separator())?;
-
-        let menus = self.tray_platform_config_device_selection()?;
-
-        for submenu in menus.into_iter() {
-            menu.append(&submenu)?;
-        }
 
         menu.append(&PredefinedMenuItem::separator())?;
 
@@ -141,11 +120,41 @@ impl App {
             }
         }
 
+        menu.append(&PredefinedMenuItem::separator())?;
+
+        // Device selection for global default
+        let menus = self.tray_platform_config_device_selection()?;
+
+        for submenu in menus.into_iter() {
+            menu.append(&submenu)?;
+        }
+
         append_root(&menu)?;
 
         Ok(menu)
     }
+    fn build_tray_settings_submenu(&self) -> AppResult<Submenu> {
+        // This a little cursed, but it's the best solution I can think of currently.
+        // All of the menu methods that take in multiple items take in &[&dyn IsMenuItem]
+        // So I have to store the built objects somewhere else to be able to return *only* references to the dyn type
+        // or just rereference it here.
+        // And I can just chain them without any intermediary variables, so, fine.
+        let submenu = SubmenuBuilder::new()
+            .enabled(true)
+            .text("Settings")
+            .items(
+                &self
+                    .settings
+                    .platform
+                    .build_check_menu_items()
+                    .iter()
+                    .map(|item| item as &dyn IsMenuItem)
+                    .collect::<Vec<_>>(),
+            )
+            .build()?;
 
+        Ok(submenu)
+    }
     pub fn handle_tray_menu_event(
         &mut self,
         event: MenuEvent,
@@ -171,7 +180,9 @@ impl App {
                 self.update_tray_menu()?;
                 debug!("{:#?}", self.settings.platform);
             }
-            guid if id.starts_with(CONFIG_DEFAULT_ID) => {}
+            guid if id.starts_with(CONFIG_DEFAULT_ID) => {
+                self.update_tray_menu()?;
+            }
             _ => (),
         }
         Ok(())
@@ -191,43 +202,6 @@ fn append_root(menu: &Menu) -> AppResult<()> {
     ])?;
 
     Ok(())
-}
-
-pub fn build_device_checks(
-    devices: &BTreeMap<String, DiscoveredDevice>,
-    prefix: &str,
-    chosen: Option<&str>,
-) -> Vec<CheckMenuItem> {
-    let mut items = Vec::new();
-
-    // Dunno if I want to keep it like this
-    // or be prefix-none
-    let none_id = format!("{prefix}");
-    items.push(CheckMenuItem::with_id(
-        &none_id,
-        "None",
-        true,
-        chosen.is_none(),
-        None,
-    ));
-
-    for device in devices.values() {
-        let item_id = format!("{prefix}-{}", device.guid);
-        let chosen = if let Some(chosen) = chosen.as_ref() {
-            *chosen == device.guid
-        } else {
-            false
-        };
-        items.push(CheckMenuItem::with_id(
-            &item_id,
-            &device.human_name,
-            true,
-            chosen,
-            None,
-        ));
-    }
-
-    items
 }
 
 /// An enum to help with titling submenus.

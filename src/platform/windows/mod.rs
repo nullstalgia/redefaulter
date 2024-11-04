@@ -351,7 +351,7 @@ impl AudioNightmare {
         })
     }
     /// Tries to find device by GUID first, and then by name
-    fn try_find_device(
+    pub fn try_find_device(
         &self,
         direction: &Direction,
         needle: &ConfigDevice,
