@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use muda::{Submenu, SubmenuBuilder};
+use muda::{PredefinedMenuItem, Submenu, SubmenuBuilder};
 use tray_icon::menu::{CheckMenuItem, IsMenuItem, MenuEvent, MenuItem};
 
 use crate::{
@@ -40,7 +40,7 @@ impl App {
         );
         let item_refs = playback_device_checks
             .iter()
-            .map(|item| item as &dyn IsMenuItem)
+            .map(|item| item.as_ref())
             .collect::<Vec<_>>();
 
         let playback_menu = SubmenuBuilder::new()
@@ -65,7 +65,7 @@ impl App {
             );
             let item_refs = playback_device_checks
                 .iter()
-                .map(|item| item as &dyn IsMenuItem)
+                .map(|item| item.as_ref())
                 .collect::<Vec<_>>();
 
             let playback_menu = SubmenuBuilder::new()
@@ -90,7 +90,7 @@ impl App {
         );
         let item_refs = recording_device_checks
             .iter()
-            .map(|item| item as &dyn IsMenuItem)
+            .map(|item| item.as_ref())
             .collect::<Vec<_>>();
 
         let recording_menu = SubmenuBuilder::new()
@@ -115,7 +115,7 @@ impl App {
             );
             let item_refs = recording_device_checks
                 .iter()
-                .map(|item| item as &dyn IsMenuItem)
+                .map(|item| item.as_ref())
                 .collect::<Vec<_>>();
 
             let recording_menu = SubmenuBuilder::new()
@@ -138,7 +138,7 @@ pub fn build_device_checks(
     config_device: &ConfigDevice,
     discovered_device: Option<&DiscoveredDevice>,
     selection_type: &DeviceSelectionType,
-) -> Vec<CheckMenuItem> {
+) -> Vec<Box<dyn IsMenuItem>> {
     let mut items = Vec::new();
 
     use DeviceSelectionType::*;
@@ -150,28 +150,49 @@ pub fn build_device_checks(
     // Dunno if I want to keep it like this
     // or be prefix-none
     let none_id = format!("{prefix}");
-    items.push(CheckMenuItem::with_id(
+    items.push(Box::new(CheckMenuItem::with_id(
         &none_id,
         &none_text,
         true,
         config_device.is_empty(),
         None,
-    ));
+    )) as Box<dyn IsMenuItem>);
+
+    items.push(Box::new(PredefinedMenuItem::separator()) as Box<dyn IsMenuItem>);
+
+    let mut device_found = false;
 
     for device in devices.values() {
-        let item_id = format!("{prefix}-{}", device.guid);
+        let item_id = format!("{DEVICE_PREFIX}-{prefix}-{}", device.guid);
         let chosen = if let Some(chosen) = discovered_device.as_ref() {
+            device_found = true;
             *chosen.guid == device.guid
         } else {
             false
         };
-        items.push(CheckMenuItem::with_id(
+        items.push(Box::new(CheckMenuItem::with_id(
             &item_id,
-            &device.human_name,
+            &device.to_string(),
             true,
             chosen,
             None,
-        ));
+        )) as Box<dyn IsMenuItem>);
+    }
+
+    // Checking if we have a device configured but wasn't in our list of known active devices
+    if !config_device.is_empty() && !device_found {
+        items.push(Box::new(PredefinedMenuItem::separator()) as Box<dyn IsMenuItem>);
+        // Giving this an ignore id, since if someone clicks it
+        // it unchecks the listing in the tray, when instead the user
+        // should be clicking the None item to clear the config entry.
+        let derived_name = format!("(Not Found) {}", config_device.to_string());
+        items.push(Box::new(CheckMenuItem::with_id(
+            IGNORE_ID,
+            &derived_name,
+            true,
+            true,
+            None,
+        )) as Box<dyn IsMenuItem>);
     }
 
     items

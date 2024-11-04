@@ -25,6 +25,10 @@ pub mod common_ids {
     pub const REVEAL_ID: &str = "reveal";
 
     pub const CONFIG_DEFAULT_ID: &str = "config";
+
+    pub const DEVICE_PREFIX: &str = "device";
+
+    pub const IGNORE_ID: &str = "ignore";
 }
 
 pub const TOOLTIP_PREFIX: &str = "Redefaulter";
@@ -179,6 +183,9 @@ impl App {
                 // rebuild menu
                 self.update_tray_menu()?;
                 debug!("{:#?}", self.settings.platform);
+            }
+            IGNORE_ID => {
+                self.update_tray_menu()?;
             }
             guid if id.starts_with(CONFIG_DEFAULT_ID) => {
                 self.update_tray_menu()?;

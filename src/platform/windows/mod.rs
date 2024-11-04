@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::{collections::BTreeMap, fmt::Display, marker::PhantomData};
 
 use menu_macro::*;
 use regex_lite::Regex;
@@ -495,6 +495,21 @@ pub struct DeviceSet<State> {
     pub recording: WindowsAudioDevice<State>,
     #[serde(default)]
     pub recording_comms: WindowsAudioDevice<State>,
+}
+
+impl<State> Display for WindowsAudioDevice<State> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.guid.is_empty(), self.human_name.is_empty()) {
+            // Both populated, just use name
+            (false, false) => write!(f, "{}", self.human_name),
+            // Only name populated
+            (true, false) => write!(f, "{}", self.human_name),
+            // Only GUID populated
+            (false, true) => write!(f, "By GUID: \"{}\"", self.guid),
+            // Neither populated?
+            (true, true) => write!(f, "Empty device?"),
+        }
+    }
 }
 
 impl<State> DeviceSet<State> {
