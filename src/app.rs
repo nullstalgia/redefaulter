@@ -43,7 +43,7 @@ pub struct App {
     // - config'd devices
     // - never taken into account
     pub config_defaults: DeviceSet<ConfigEntry>,
-    current_defaults: DeviceSet<Discovered>,
+    pub current_defaults: DeviceSet<Discovered>,
 
     active_profiles: BTreeMap<OsString, AppOverride>,
 
@@ -192,6 +192,8 @@ impl App {
                 menu.update_menu(
                     self.profiles.len(),
                     &self.active_profiles,
+                    &self.endpoints,
+                    &self.current_defaults,
                     &self.settings.platform,
                 )?;
             }

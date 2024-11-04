@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, ffi::OsString};
 
+use muda::{CheckMenuItem, IsMenuItem};
 use tao::event_loop::ControlFlow;
 use tracing::*;
 use tray_icon::{
@@ -10,22 +11,26 @@ use tray_icon::{
 use crate::{
     app::App,
     errors::AppResult,
-    platform::PlatformSettings,
+    platform::{AudioNightmare, DeviceSet, Discovered, DiscoveredDevice, PlatformSettings},
     profiles::{AppOverride, PROFILES_PATH},
 };
 
 pub mod common_ids {
+    // Ids for root menu buttons, for all platforms
     pub const QUIT_ID: &str = "quit";
     pub const RELOAD_ID: &str = "reload";
     pub const REVEAL_ID: &str = "reveal";
+
+    pub const CONFIG_DEFAULT_ID: &str = "config";
 }
+
 pub const TOOLTIP_PREFIX: &str = "Redefaulter";
 
 use common_ids::*;
 
 pub struct TrayHelper {
     handle: TrayIcon,
-    root: Menu,
+    // root: Menu,
 }
 
 // TODO Consolidate menu root
@@ -34,19 +39,10 @@ impl TrayHelper {
     pub fn build() -> AppResult<Self> {
         let menu = Menu::new();
 
-        let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
-        let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
-        let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
         let loading = MenuItem::new(format!("Loading profiles..."), false, None);
 
-        menu.append_items(&[
-            &loading,
-            &PredefinedMenuItem::separator(),
-            &reload,
-            &reveal,
-            &PredefinedMenuItem::separator(),
-            &quit,
-        ])?;
+        menu.append(&loading)?;
+
         // drop(quit_i);
 
         // Add a copy to the struct if we start changing the icon?
@@ -54,25 +50,39 @@ impl TrayHelper {
 
         let initial_tooltip = format!("{} - Initializing", TOOLTIP_PREFIX);
 
+        append_root(&menu)?;
+
         // We create the icon once the event loop is actually running
         // to prevent issues like https://github.com/tauri-apps/tray-icon/issues/90
         let handle = TrayIconBuilder::new()
-            .with_menu(Box::new(menu.clone()))
+            .with_menu(Box::new(menu))
             .with_tooltip(initial_tooltip)
             .with_icon(initial_icon)
             .build()?;
 
-        Ok(Self { root: menu, handle })
+        Ok(Self { handle })
     }
     pub fn update_menu(
         &mut self,
         total_profiles: usize,
-        profiles: &BTreeMap<OsString, AppOverride>,
+        active_profiles: &BTreeMap<OsString, AppOverride>,
+        endpoints: &AudioNightmare,
+        current_defaults: &DeviceSet<Discovered>,
         settings: &PlatformSettings,
     ) -> AppResult<()> {
-        let new_tooltip = format!("{} - {} profiles active", TOOLTIP_PREFIX, profiles.len());
+        let new_tooltip = format!(
+            "{} - {} profiles active",
+            TOOLTIP_PREFIX,
+            active_profiles.len()
+        );
         self.handle.set_tooltip(Some(new_tooltip))?;
-        let new_menu = self.build_menu(total_profiles, profiles, settings)?;
+        let new_menu = self.build_menu(
+            total_profiles,
+            active_profiles,
+            endpoints,
+            current_defaults,
+            settings,
+        )?;
         self.handle.set_menu(Some(Box::new(new_menu)));
         Ok(())
     }
@@ -81,7 +91,9 @@ impl TrayHelper {
     pub fn build_menu(
         &mut self,
         total_profiles: usize,
-        profiles: &BTreeMap<OsString, AppOverride>,
+        active_profiles: &BTreeMap<OsString, AppOverride>,
+        endpoints: &AudioNightmare,
+        current_defaults: &DeviceSet<Discovered>,
         settings: &PlatformSettings,
     ) -> AppResult<Menu> {
         let menu = Menu::new();
@@ -95,32 +107,48 @@ impl TrayHelper {
             menu.append(&item)?;
         }
 
+        // wretched de-evolution in the name of dynamic dispatch
+
+        // let items: Vec<CheckMenuItem> = settings.build_check_menu_items();
+        // let item_refs: Vec<&dyn IsMenuItem> =
+        //     items.iter().map(|item| item as &dyn IsMenuItem).collect();
+        // menu.prepend_items(&item_refs)?;
+
+        // menu.append_items(
+        //     &settings
+        //         .build_check_menu_items()
+        //         .iter()
+        //         .map(|item| item as &dyn IsMenuItem)
+        //         .collect::<Vec<_>>(),
+        // )?;
+
         menu.append(&PredefinedMenuItem::separator())?;
 
-        if profiles.is_empty() {
+        let menus = self.platform_config_device_selection(endpoints, current_defaults, settings)?;
+
+        for submenu in menus.into_iter() {
+            menu.append(&submenu)?;
+        }
+
+        menu.append(&PredefinedMenuItem::separator())?;
+
+        if total_profiles == 0 {
+            let text = format!("No Profiles Loaded!");
+            menu.append(&MenuItem::new(text, false, None))?;
+        } else if active_profiles.is_empty() {
             let text = format!("No Profiles Active ({total_profiles} loaded)");
-            let item = MenuItem::new(text, false, None);
-            menu.append(&item)?;
+            menu.append(&MenuItem::new(text, false, None))?;
         } else {
             let item = MenuItem::new("Active Profiles:", false, None);
             menu.append(&item)?;
             // Eh, muda also just calls append in a loop with the _items version
-            for profile in profiles.keys() {
+            for profile in active_profiles.keys() {
                 let item = MenuItem::new(profile.to_string_lossy(), false, None);
                 menu.append(&item)?;
             }
         }
 
-        let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
-        let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
-        let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
-        menu.append_items(&[
-            &PredefinedMenuItem::separator(),
-            &reload,
-            &reveal,
-            &PredefinedMenuItem::separator(),
-            &quit,
-        ])?;
+        append_root(&menu)?;
 
         Ok(menu)
     }
@@ -146,12 +174,74 @@ impl App {
             }
             _ if id.starts_with(self.settings.platform.menu_id_root()) => {
                 self.settings.platform.handle_menu_toggle_event(id)?;
-                self.endpoints.update_config(&self.settings.platform);
                 self.settings.save(&self.config_path)?;
+                self.endpoints.update_config(&self.settings.platform);
+                // rebuild menu
                 debug!("{:#?}", self.settings.platform);
             }
+            guid if id.starts_with(CONFIG_DEFAULT_ID) => {}
             _ => (),
         }
         Ok(())
     }
+}
+
+fn append_root(menu: &Menu) -> AppResult<()> {
+    let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
+    let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
+    let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
+    menu.append_items(&[
+        &PredefinedMenuItem::separator(),
+        &reload,
+        &reveal,
+        &PredefinedMenuItem::separator(),
+        &quit,
+    ])?;
+
+    Ok(())
+}
+
+pub fn build_device_checks(
+    devices: &BTreeMap<String, DiscoveredDevice>,
+    prefix: &str,
+    chosen: Option<&str>,
+) -> Vec<CheckMenuItem> {
+    let mut items = Vec::new();
+
+    // Dunno if I want to keep it like this
+    // or be prefix-none
+    let none_id = format!("{prefix}");
+    items.push(CheckMenuItem::with_id(
+        &none_id,
+        "None",
+        true,
+        chosen.is_none(),
+        None,
+    ));
+
+    for device in devices.values() {
+        let item_id = format!("{prefix}-{}", device.guid);
+        let chosen = if let Some(chosen) = chosen.as_ref() {
+            *chosen == device.guid
+        } else {
+            false
+        };
+        items.push(CheckMenuItem::with_id(
+            &item_id,
+            &device.human_name,
+            true,
+            chosen,
+            None,
+        ));
+    }
+
+    items
+}
+
+/// An enum to help with titling submenus.
+pub enum DeviceSelectionType {
+    /// This set of device selections is for the app's globally desired default
+    ConfigDefault,
+    /// This set of device selections is for changing a profile's set defaults
+    Profile,
 }

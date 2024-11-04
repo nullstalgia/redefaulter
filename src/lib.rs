@@ -130,13 +130,12 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             }
             Event::UserEvent(event) => {
                 // println!("user event: {event:?}");
-                let instant_1 = Instant::now();
+                let t = Instant::now();
                 if let Err(e) = app.handle_custom_event(event, control_flow) {
                     error!("Error in event loop, closing. {e}");
                     *control_flow = ControlFlow::ExitWithCode(1);
                 };
-                let instant_2 = Instant::now();
-                debug!("Event handling took {:?}", instant_2 - instant_1);
+                debug!("Event handling took {:?}", t.elapsed());
             }
             // Timeout for an audio device reaction finished waiting
             // (nothing else right now uses WaitUntil)
@@ -169,7 +168,9 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         }
         if let Ok(event) = menu_channel.try_recv() {
             debug!("Menu Event: {event:?}");
+            let t = Instant::now();
             app.handle_tray_menu_event(event, control_flow).unwrap();
+            debug!("Tray event handling took {:?}", t.elapsed());
         }
 
         if let Ok(_event) = tray_channel.try_recv() {

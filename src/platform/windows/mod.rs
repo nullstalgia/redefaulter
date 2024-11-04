@@ -44,9 +44,9 @@ pub struct AudioNightmare {
     /// Channel for notifications for audio endpoint events
     // callback_rx: Receiver<WindowsAudioNotification>,
     /// Existing devices attached to the host
-    playback_devices: BTreeMap<String, DiscoveredDevice>,
+    pub playback_devices: BTreeMap<String, DiscoveredDevice>,
     /// Existing devices attached to the host
-    recording_devices: BTreeMap<String, DiscoveredDevice>,
+    pub recording_devices: BTreeMap<String, DiscoveredDevice>,
     /// Regex for fuzzy-matching devices with numeric prefixes
     regex: Regex,
     /// Used to tell `App` that something has changed
@@ -438,8 +438,8 @@ impl AudioNightmare {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WindowsAudioDevice<State> {
-    human_name: String,
-    guid: String,
+    pub human_name: String,
+    pub guid: String,
     // direction: Option<Direction>,
     _state: PhantomData<State>,
 }
@@ -488,13 +488,13 @@ impl TryFrom<wasapi::Device> for DiscoveredDevice {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DeviceSet<State> {
     #[serde(default)]
-    playback: WindowsAudioDevice<State>,
+    pub playback: WindowsAudioDevice<State>,
     #[serde(default)]
-    playback_comms: WindowsAudioDevice<State>,
+    pub playback_comms: WindowsAudioDevice<State>,
     #[serde(default)]
-    recording: WindowsAudioDevice<State>,
+    pub recording: WindowsAudioDevice<State>,
     #[serde(default)]
-    recording_comms: WindowsAudioDevice<State>,
+    pub recording_comms: WindowsAudioDevice<State>,
 }
 
 impl<State> DeviceSet<State> {
