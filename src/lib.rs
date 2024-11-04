@@ -21,7 +21,6 @@ use std::time::Instant;
 use tao::event::StartCause;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
-use tray_menu::TrayHelper;
 
 use color_eyre::eyre::Result;
 
@@ -124,7 +123,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         match event {
             Event::NewEvents(StartCause::Init) => {
                 *control_flow = ControlFlow::Wait;
-                app.tray_menu = Some(TrayHelper::build().unwrap());
+                app.tray_menu = Some(app.build_tray_late().unwrap());
                 app.update_active_profiles(true).unwrap();
                 app.change_devices_if_needed().unwrap();
             }

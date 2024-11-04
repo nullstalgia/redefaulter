@@ -14,7 +14,7 @@ use dashmap::DashMap;
 use takeable::Takeable;
 use tao::event_loop::{ControlFlow, EventLoopProxy};
 use tracing::*;
-use tray_icon::menu::MenuEvent;
+use tray_icon::{menu::MenuEvent, TrayIcon};
 
 use crate::{
     errors::{AppResult, RedefaulterError},
@@ -22,7 +22,6 @@ use crate::{
     processes::{self, Process},
     profiles::{AppOverride, Profiles},
     settings::Settings,
-    tray_menu::{common_ids::*, TrayHelper},
 };
 
 #[derive(Debug)]
@@ -45,11 +44,11 @@ pub struct App {
     pub config_defaults: DeviceSet<ConfigEntry>,
     pub current_defaults: DeviceSet<Discovered>,
 
-    active_profiles: BTreeMap<OsString, AppOverride>,
+    pub active_profiles: BTreeMap<OsString, AppOverride>,
 
     // Option instead of Takeable due to late initialization in EventLoop Init
     // Or possible non-initialization in the case of CLI commands
-    pub tray_menu: Option<TrayHelper>,
+    pub tray_menu: Option<TrayIcon>,
 
     pub settings: Settings,
     pub config_path: PathBuf,
@@ -188,15 +187,16 @@ impl App {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
 
-            if let Some(menu) = self.tray_menu.as_mut() {
-                menu.update_menu(
-                    self.profiles.len(),
-                    &self.active_profiles,
-                    &self.endpoints,
-                    &self.current_defaults,
-                    &self.settings.platform,
-                )?;
-            }
+            // if let Some(menu) = self.tray_menu.as_mut() {
+            //     menu.update_menu(
+            //         self.profiles.len(),
+            //         &self.active_profiles,
+            //         &self.endpoints,
+            //         &self.current_defaults,
+            //         &self.settings.platform,
+            //     )?;
+            // }
+            self.update_tray_menu()?;
         }
         Ok(())
     }

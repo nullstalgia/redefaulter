@@ -512,6 +512,8 @@ pub struct PlatformSettings {
     /// Unify Communications Devices
     ///
     /// When true, all communications entries are ignored. Any higher priority profile entries that change only communications device will be ignored.
+    ///
+    /// TODO: Make this work on its own when there's not a given set of devices?
     pub unify_communications_devices: bool,
     #[serde(rename = "default")]
     #[menuid(skip)]

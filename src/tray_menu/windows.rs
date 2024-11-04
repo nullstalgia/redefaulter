@@ -9,33 +9,24 @@ use crate::{
     platform::{AudioNightmare, DeviceSet, Discovered, DiscoveredDevice, PlatformSettings},
 };
 
-use super::{build_device_checks, common_ids::*, TrayHelper};
+use super::{build_device_checks, common_ids::*};
 
-impl TrayHelper {
-    pub fn platform_settings(&self, settings: &PlatformSettings) -> Vec<Box<dyn IsMenuItem>> {
-        let mut items: Vec<Box<dyn IsMenuItem>> = Vec::new();
-
-        let header = MenuItem::new("Settings:", false, None);
-
-        items.push(Box::new(header));
-
-        items
-    }
+impl App {
     // this is cooked
-    pub fn platform_config_device_selection(
+    pub fn tray_platform_config_device_selection(
         &self,
-        endpoints: &AudioNightmare,
-        current_defaults: &DeviceSet<Discovered>,
-        settings: &PlatformSettings,
+        // endpoints: &AudioNightmare,
+        // current_defaults: &DeviceSet<Discovered>,
+        // settings: &PlatformSettings,
     ) -> AppResult<Vec<Submenu>> {
         let mut submenus = Vec::new();
 
         // TODO options input should be determined by if profile or config
         let playback_id = format!("{CONFIG_DEFAULT_ID}-p");
         let playback_device_checks = build_device_checks(
-            &endpoints.playback_devices,
+            &self.endpoints.playback_devices,
             CONFIG_DEFAULT_ID,
-            Some(&current_defaults.playback.guid),
+            Some(&self.current_defaults.playback.guid),
         );
         let item_refs = playback_device_checks
             .iter()
@@ -50,11 +41,11 @@ impl TrayHelper {
 
         submenus.push(playback_menu);
 
-        if !settings.unify_communications_devices {
+        if !self.settings.platform.unify_communications_devices {
             let playback_device_checks = build_device_checks(
-                &endpoints.playback_devices,
+                &self.endpoints.playback_devices,
                 CONFIG_DEFAULT_ID,
-                Some(&current_defaults.playback_comms.guid),
+                Some(&self.current_defaults.playback_comms.guid),
             );
             let item_refs = playback_device_checks
                 .iter()
@@ -71,9 +62,9 @@ impl TrayHelper {
         }
 
         let recording_device_checks = build_device_checks(
-            &endpoints.recording_devices,
+            &self.endpoints.recording_devices,
             CONFIG_DEFAULT_ID,
-            Some(&current_defaults.recording.guid),
+            Some(&self.current_defaults.recording.guid),
         );
         let item_refs = recording_device_checks
             .iter()
@@ -88,11 +79,11 @@ impl TrayHelper {
 
         submenus.push(recording_menu);
 
-        if !settings.unify_communications_devices {
+        if !self.settings.platform.unify_communications_devices {
             let recording_device_checks = build_device_checks(
-                &endpoints.recording_devices,
+                &self.endpoints.recording_devices,
                 CONFIG_DEFAULT_ID,
-                Some(&current_defaults.recording_comms.guid),
+                Some(&self.current_defaults.recording_comms.guid),
             );
             let item_refs = recording_device_checks
                 .iter()
@@ -111,5 +102,3 @@ impl TrayHelper {
         Ok(submenus)
     }
 }
-
-impl App {}

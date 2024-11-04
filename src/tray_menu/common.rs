@@ -28,15 +28,10 @@ pub const TOOLTIP_PREFIX: &str = "Redefaulter";
 
 use common_ids::*;
 
-pub struct TrayHelper {
-    handle: TrayIcon,
-    // root: Menu,
-}
-
 // TODO Consolidate menu root
 
-impl TrayHelper {
-    pub fn build() -> AppResult<Self> {
+impl App {
+    pub fn build_tray_late(&self) -> AppResult<TrayIcon> {
         let menu = Menu::new();
 
         let loading = MenuItem::new(format!("Loading profiles..."), false, None);
@@ -60,41 +55,37 @@ impl TrayHelper {
             .with_icon(initial_icon)
             .build()?;
 
-        Ok(Self { handle })
+        Ok(handle)
     }
-    pub fn update_menu(
-        &mut self,
-        total_profiles: usize,
-        active_profiles: &BTreeMap<OsString, AppOverride>,
-        endpoints: &AudioNightmare,
-        current_defaults: &DeviceSet<Discovered>,
-        settings: &PlatformSettings,
+    pub fn update_tray_menu(
+        &self,
+        // total_profiles: usize,
+        // active_profiles: &BTreeMap<OsString, AppOverride>,
+        // endpoints: &AudioNightmare,
+        // current_defaults: &DeviceSet<Discovered>,
+        // settings: &PlatformSettings,
     ) -> AppResult<()> {
-        let new_tooltip = format!(
-            "{} - {} profiles active",
-            TOOLTIP_PREFIX,
-            active_profiles.len()
-        );
-        self.handle.set_tooltip(Some(new_tooltip))?;
-        let new_menu = self.build_menu(
-            total_profiles,
-            active_profiles,
-            endpoints,
-            current_defaults,
-            settings,
-        )?;
-        self.handle.set_menu(Some(Box::new(new_menu)));
+        if let Some(handle) = self.tray_menu.as_ref() {
+            let new_tooltip = format!(
+                "{} - {} profiles active",
+                TOOLTIP_PREFIX,
+                self.active_profiles.len()
+            );
+            handle.set_tooltip(Some(new_tooltip))?;
+            let new_menu = self.build_tray_contents()?;
+            handle.set_menu(Some(Box::new(new_menu)));
+        }
         Ok(())
     }
     // Regenerate menu each time? or on click...
     // Right now it's on each profile change
-    pub fn build_menu(
-        &mut self,
-        total_profiles: usize,
-        active_profiles: &BTreeMap<OsString, AppOverride>,
-        endpoints: &AudioNightmare,
-        current_defaults: &DeviceSet<Discovered>,
-        settings: &PlatformSettings,
+    pub fn build_tray_contents(
+        &self,
+        // total_profiles: usize,
+        // active_profiles: &BTreeMap<OsString, AppOverride>,
+        // endpoints: &AudioNightmare,
+        // current_defaults: &DeviceSet<Discovered>,
+        // settings: &PlatformSettings,
     ) -> AppResult<Menu> {
         let menu = Menu::new();
 
@@ -103,7 +94,7 @@ impl TrayHelper {
         // hide communications role if unify enabled
         // section for editing active profiles
 
-        for item in settings.build_check_menu_items() {
+        for item in self.settings.platform.build_check_menu_items() {
             menu.append(&item)?;
         }
 
@@ -124,7 +115,7 @@ impl TrayHelper {
 
         menu.append(&PredefinedMenuItem::separator())?;
 
-        let menus = self.platform_config_device_selection(endpoints, current_defaults, settings)?;
+        let menus = self.tray_platform_config_device_selection()?;
 
         for submenu in menus.into_iter() {
             menu.append(&submenu)?;
@@ -132,17 +123,19 @@ impl TrayHelper {
 
         menu.append(&PredefinedMenuItem::separator())?;
 
+        let total_profiles = self.profiles.len();
+
         if total_profiles == 0 {
             let text = format!("No Profiles Loaded!");
             menu.append(&MenuItem::new(text, false, None))?;
-        } else if active_profiles.is_empty() {
+        } else if self.active_profiles.is_empty() {
             let text = format!("No Profiles Active ({total_profiles} loaded)");
             menu.append(&MenuItem::new(text, false, None))?;
         } else {
             let item = MenuItem::new("Active Profiles:", false, None);
             menu.append(&item)?;
             // Eh, muda also just calls append in a loop with the _items version
-            for profile in active_profiles.keys() {
+            for profile in self.active_profiles.keys() {
                 let item = MenuItem::new(profile.to_string_lossy(), false, None);
                 menu.append(&item)?;
             }
@@ -152,9 +145,7 @@ impl TrayHelper {
 
         Ok(menu)
     }
-}
 
-impl App {
     pub fn handle_tray_menu_event(
         &mut self,
         event: MenuEvent,
@@ -177,6 +168,7 @@ impl App {
                 self.settings.save(&self.config_path)?;
                 self.endpoints.update_config(&self.settings.platform);
                 // rebuild menu
+                self.update_tray_menu()?;
                 debug!("{:#?}", self.settings.platform);
             }
             guid if id.starts_with(CONFIG_DEFAULT_ID) => {}
