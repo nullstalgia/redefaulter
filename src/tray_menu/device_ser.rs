@@ -10,31 +10,31 @@ use super::common_ids::DEVICE_PREFIX;
 
 /// An enum to help with titling submenus.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DeviceSelectionType {
+pub enum DeviceSelectionType<'a> {
     /// This set of device selections is for the app's globally desired default
     ConfigDefault,
     /// This set of device selections is for changing a profile's set defaults
     ///
     /// Presently only works with profiles with filenames that are valid UTF-8.
-    Profile(String),
+    Profile(&'a str),
 }
 
 #[derive(Debug)]
-pub struct TrayDevice {
-    pub destination: DeviceSelectionType,
+pub struct TrayDevice<'a> {
+    pub destination: DeviceSelectionType<'a>,
     pub role: DeviceRole,
-    pub guid: Option<String>,
+    pub guid: Option<&'a str>,
 }
 
-impl TrayDevice {
-    pub fn new(destination: &DeviceSelectionType, role: &DeviceRole, guid: &str) -> Self {
+impl<'a> TrayDevice<'a> {
+    pub fn new(destination: &DeviceSelectionType<'a>, role: &DeviceRole, guid: &'a str) -> Self {
         Self {
             destination: destination.to_owned(),
             role: role.to_owned(),
-            guid: Some(guid.to_string()),
+            guid: Some(guid),
         }
     }
-    pub fn none(destination: &DeviceSelectionType, role: &DeviceRole) -> Self {
+    pub fn none(destination: &DeviceSelectionType<'a>, role: &DeviceRole) -> Self {
         Self {
             destination: destination.to_owned(),
             role: role.to_owned(),
@@ -46,12 +46,12 @@ impl TrayDevice {
 // Character is illegal in filenames, so should be safe to use.
 const TRAY_ID_DELIMITER: char = '|';
 
-impl<'de> Deserialize<'de> for TrayDevice {
+impl<'de: 'a, 'a> Deserialize<'de> for TrayDevice<'a> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let buf = String::deserialize(deserializer)?;
+        let buf: &str = Deserialize::deserialize(deserializer)?;
 
         // Example input:
         // device~~playback~1234567890
@@ -75,11 +75,11 @@ impl<'de> Deserialize<'de> for TrayDevice {
                     if dest.is_empty() {
                         DeviceSelectionType::ConfigDefault
                     } else {
-                        DeviceSelectionType::Profile(dest.to_owned())
+                        DeviceSelectionType::Profile(dest)
                     }
                 };
                 let role: DeviceRole = serde_plain::from_str(parts[2]).map_err(D::Error::custom)?;
-                let guid = parts.get(3).map(|s| s.to_string());
+                let guid = parts.get(3).map(|s| *s);
 
                 Ok(TrayDevice {
                     destination,
@@ -96,7 +96,7 @@ impl<'de> Deserialize<'de> for TrayDevice {
     }
 }
 
-impl Serialize for TrayDevice {
+impl<'a> Serialize for TrayDevice<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -122,4 +122,4 @@ impl Serialize for TrayDevice {
     }
 }
 
-derive_display_from_serialize!(TrayDevice);
+derive_display_from_serialize!(TrayDevice<'a>);

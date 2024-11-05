@@ -135,7 +135,7 @@ impl App {
                 };
                 let mut submenus: Vec<Box<dyn IsMenuItem>> = Vec::new();
                 let playback_submenu = self.tray_build_platform_device_selection(
-                    &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                    &DeviceSelectionType::Profile(profile_name_str),
                     &DeviceRole::Playback,
                     &profile.override_set.playback,
                 )?;
@@ -143,21 +143,21 @@ impl App {
 
                 if !self.settings.platform.unify_communications_devices {
                     let playback_comms_submenu = self.tray_build_platform_device_selection(
-                        &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                        &DeviceSelectionType::Profile(profile_name_str),
                         &DeviceRole::PlaybackComms,
                         &profile.override_set.playback_comms,
                     )?;
                     submenus.push(Box::new(playback_comms_submenu));
                 }
                 let recording_submenu = self.tray_build_platform_device_selection(
-                    &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                    &DeviceSelectionType::Profile(profile_name_str),
                     &DeviceRole::Recording,
                     &profile.override_set.recording,
                 )?;
                 submenus.push(Box::new(recording_submenu));
                 if !self.settings.platform.unify_communications_devices {
                     let recording_comms_submenu = self.tray_build_platform_device_selection(
-                        &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                        &DeviceSelectionType::Profile(profile_name_str),
                         &DeviceRole::RecordingComms,
                         &profile.override_set.recording_comms,
                     )?;
