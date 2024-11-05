@@ -585,6 +585,18 @@ pub enum DeviceRole {
     RecordingComms,
 }
 
+impl Display for DeviceRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let role_str = match self {
+            DeviceRole::Playback => "Playback",
+            DeviceRole::PlaybackComms => "Playback Comm.",
+            DeviceRole::Recording => "Recording",
+            DeviceRole::RecordingComms => "Recording Comm.",
+        };
+        write!(f, "{}", role_str)
+    }
+}
+
 impl From<&DeviceRole> for Direction {
     fn from(value: &DeviceRole) -> Self {
         match value {

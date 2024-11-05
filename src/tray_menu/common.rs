@@ -121,8 +121,60 @@ impl App {
             let item = MenuItem::new("Active Profiles:", false, None);
             menu.append(&item)?;
             // Eh, muda also just calls append in a loop with the _items version
-            for profile in self.active_profiles.keys() {
-                let item = MenuItem::new(profile.to_string_lossy(), false, None);
+            for (profile_name, profile) in self.active_profiles.iter() {
+                let Some(profile_name_str) = profile_name.to_str() else {
+                    // let incomplete_item = SubmenuBuilder::new()
+                    //     .enabled(true)
+                    //     .item(&playback_submenu)
+                    //     .text(profile_name_str)
+                    //     .build()?;
+                    // menu.append(&incomplete_item)?;
+                    // TODO: Opener::reveal the item
+                    // continue;
+                    panic!();
+                };
+                let mut submenus: Vec<Box<dyn IsMenuItem>> = Vec::new();
+                let playback_submenu = self.tray_build_platform_device_selection(
+                    &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                    &DeviceRole::Playback,
+                    &profile.override_set.playback,
+                )?;
+                submenus.push(Box::new(playback_submenu));
+
+                if !self.settings.platform.unify_communications_devices {
+                    let playback_comms_submenu = self.tray_build_platform_device_selection(
+                        &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                        &DeviceRole::PlaybackComms,
+                        &profile.override_set.playback_comms,
+                    )?;
+                    submenus.push(Box::new(playback_comms_submenu));
+                }
+                let recording_submenu = self.tray_build_platform_device_selection(
+                    &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                    &DeviceRole::Recording,
+                    &profile.override_set.recording,
+                )?;
+                submenus.push(Box::new(recording_submenu));
+                if !self.settings.platform.unify_communications_devices {
+                    let recording_comms_submenu = self.tray_build_platform_device_selection(
+                        &DeviceSelectionType::Profile(profile_name_str.to_owned()),
+                        &DeviceRole::RecordingComms,
+                        &profile.override_set.recording_comms,
+                    )?;
+                    submenus.push(Box::new(recording_comms_submenu));
+                }
+
+                // let profile_item = SubmenuBuilder::new()
+                //     .enabled(true)
+                //     .item(&playback_submenu)
+                //     .text("Playback")
+                //     .build()?;
+                let submenu_refs = submenus.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
+                let item = SubmenuBuilder::new()
+                    .enabled(true)
+                    .items(&submenu_refs)
+                    .text(profile_name_str)
+                    .build()?;
                 menu.append(&item)?;
             }
         }

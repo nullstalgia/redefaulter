@@ -1,5 +1,6 @@
 use fs_err::{self as fs, File};
 use std::{
+    cell::LazyCell,
     collections::BTreeMap,
     ffi::{OsStr, OsString},
     io::Write,
@@ -25,6 +26,8 @@ pub struct AppOverride {
 pub struct Profiles {
     pub inner: BTreeMap<OsString, AppOverride>,
 }
+
+pub const WILDCARD_ANY_PROCESS: LazyCell<&Path> = LazyCell::new(|| Path::new("*"));
 
 pub const PROFILES_PATH: &str = "profiles";
 

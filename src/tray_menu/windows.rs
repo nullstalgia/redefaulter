@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use muda::{PredefinedMenuItem, Submenu, SubmenuBuilder};
 use tray_icon::menu::{CheckMenuItem, IsMenuItem, MenuEvent, MenuItem};
+use wasapi::Direction;
 
 use crate::{
     app::App,
@@ -23,20 +24,102 @@ impl App {
     ) -> AppResult<Vec<Submenu>> {
         let mut submenus = Vec::new();
 
-        // TODO options input should be determined by if profile or config
-        let playback_id = format!("{CONFIG_DEFAULT_ID}-p");
+        use DeviceRole::*;
+        use DeviceSelectionType::*;
 
+        submenus.push(self.tray_build_platform_device_selection(
+            &ConfigDefault,
+            &Playback,
+            &self.settings.platform.default_devices.playback,
+        )?);
+
+        if !self.settings.platform.unify_communications_devices {
+            submenus.push(self.tray_build_platform_device_selection(
+                &ConfigDefault,
+                &PlaybackComms,
+                &self.settings.platform.default_devices.playback_comms,
+            )?);
+        }
+
+        submenus.push(self.tray_build_platform_device_selection(
+            &ConfigDefault,
+            &Recording,
+            &self.settings.platform.default_devices.recording,
+        )?);
+
+        if !self.settings.platform.unify_communications_devices {
+            submenus.push(self.tray_build_platform_device_selection(
+                &ConfigDefault,
+                &RecordingComms,
+                &self.settings.platform.default_devices.recording_comms,
+            )?);
+        }
+
+        Ok(submenus)
+    }
+    pub fn tray_platform_profile_device_selection(
+        &self,
+        profile_name_str: &str,
+        // device_set: DeviceSet<ConfigEntry>
+    ) -> AppResult<Vec<Submenu>> {
+        // let mut submenus = Vec::new();
+
+        // use DeviceRole::*;
+        // use DeviceSelectionType::*;
+
+        // submenus.push(self.tray_build_platform_device_selection(
+        //     &ConfigDefault,
+        //     &Playback,
+        //     &self.settings.platform.default_devices.playback,
+        // )?);
+
+        // if !self.settings.platform.unify_communications_devices {
+        //     submenus.push(self.tray_build_platform_device_selection(
+        //         &ConfigDefault,
+        //         &PlaybackComms,
+        //         &self.settings.platform.default_devices.playback_comms,
+        //     )?);
+        // }
+
+        // submenus.push(self.tray_build_platform_device_selection(
+        //     &ConfigDefault,
+        //     &Recording,
+        //     &self.settings.platform.default_devices.recording,
+        // )?);
+
+        // if !self.settings.platform.unify_communications_devices {
+        //     submenus.push(self.tray_build_platform_device_selection(
+        //         &ConfigDefault,
+        //         &RecordingComms,
+        //         &self.settings.platform.default_devices.recording_comms,
+        //     )?);
+        // }
+
+        // Ok(submenus)
+        todo!()
+    }
+    pub fn tray_build_platform_device_selection(
+        &self,
+        destination: &DeviceSelectionType,
+        role: &DeviceRole,
+        current: &ConfigDevice,
+    ) -> AppResult<Submenu> {
         use wasapi::Direction::*;
 
-        let possibly_known_device = self
-            .endpoints
-            .try_find_device(&Render, &self.settings.platform.default_devices.playback);
+        let direction: Direction = role.into();
+
+        let all_devices = match direction {
+            Render => &self.endpoints.playback_devices,
+            Capture => &self.endpoints.recording_devices,
+        };
+
+        let possibly_known_device = self.endpoints.try_find_device(&direction, current);
 
         let playback_device_checks = build_device_checks(
-            &self.endpoints.playback_devices,
-            &DeviceSelectionType::ConfigDefault,
-            &DeviceRole::Playback,
-            &self.settings.platform.default_devices.playback,
+            all_devices,
+            destination,
+            role,
+            current,
             possibly_known_device,
         );
         let item_refs = playback_device_checks
@@ -44,91 +127,17 @@ impl App {
             .map(|item| item.as_ref())
             .collect::<Vec<_>>();
 
-        let playback_menu = SubmenuBuilder::new()
+        let text = match destination {
+            DeviceSelectionType::ConfigDefault => format!("Preferred Default {role}"),
+            DeviceSelectionType::Profile(_) => format!("Override Default {role}"),
+        };
+
+        let submenu = SubmenuBuilder::new()
             .items(&item_refs)
-            .text("Preferred Default Playback")
+            .text(text)
             .enabled(true)
             .build()?;
 
-        submenus.push(playback_menu);
-
-        if !self.settings.platform.unify_communications_devices {
-            let possibly_known_device = self.endpoints.try_find_device(
-                &Render,
-                &self.settings.platform.default_devices.playback_comms,
-            );
-            let playback_device_checks = build_device_checks(
-                &self.endpoints.playback_devices,
-                &DeviceSelectionType::ConfigDefault,
-                &DeviceRole::PlaybackComms,
-                &self.settings.platform.default_devices.playback_comms,
-                possibly_known_device,
-            );
-            let item_refs = playback_device_checks
-                .iter()
-                .map(|item| item.as_ref())
-                .collect::<Vec<_>>();
-
-            let playback_menu = SubmenuBuilder::new()
-                .items(&item_refs)
-                .text("Preferred Default Playback (Comm.)")
-                .enabled(true)
-                .build()?;
-
-            submenus.push(playback_menu);
-        }
-
-        let possibly_known_device = self
-            .endpoints
-            .try_find_device(&Capture, &self.settings.platform.default_devices.recording);
-
-        let recording_device_checks = build_device_checks(
-            &self.endpoints.recording_devices,
-            &DeviceSelectionType::ConfigDefault,
-            &DeviceRole::Recording,
-            &self.settings.platform.default_devices.recording,
-            possibly_known_device,
-        );
-        let item_refs = recording_device_checks
-            .iter()
-            .map(|item| item.as_ref())
-            .collect::<Vec<_>>();
-
-        let recording_menu = SubmenuBuilder::new()
-            .items(&item_refs)
-            .text("Preferred Default Recording")
-            .enabled(true)
-            .build()?;
-
-        submenus.push(recording_menu);
-
-        if !self.settings.platform.unify_communications_devices {
-            let possibly_known_device = self.endpoints.try_find_device(
-                &Capture,
-                &self.settings.platform.default_devices.recording_comms,
-            );
-            let recording_device_checks = build_device_checks(
-                &self.endpoints.recording_devices,
-                &DeviceSelectionType::ConfigDefault,
-                &DeviceRole::RecordingComms,
-                &self.settings.platform.default_devices.recording_comms,
-                possibly_known_device,
-            );
-            let item_refs = recording_device_checks
-                .iter()
-                .map(|item| item.as_ref())
-                .collect::<Vec<_>>();
-
-            let recording_menu = SubmenuBuilder::new()
-                .items(&item_refs)
-                .text("Preferred Default Recording (Comm.)")
-                .enabled(true)
-                .build()?;
-
-            submenus.push(recording_menu);
-        }
-
-        Ok(submenus)
+        Ok(submenu)
     }
-    pub fn tray_build_platform_device_selection(&self) {}
 }
