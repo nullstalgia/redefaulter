@@ -236,15 +236,16 @@ impl App {
         }
         Ok(())
     }
-    pub fn update_defaults(&mut self) -> AppResult<()> {
-        debug!("Updating defaults!");
+    // TODO: The call from lib::WaitCancelled runs a *lot* when changing devices.
+    pub fn update_defaults(&mut self, line: u32) -> AppResult<()> {
+        debug!("Updating defaults! {line}");
         self.current_defaults = self.endpoints.get_current_defaults()?;
         Ok(())
     }
     pub fn change_devices_if_needed(&mut self) -> AppResult<()> {
         if let Some(actions) = self.get_damaged_devices(&self.active_profiles) {
             self.endpoints.change_devices(actions)?;
-            self.update_defaults()?;
+            self.update_defaults(line!())?;
         }
         Ok(())
     }

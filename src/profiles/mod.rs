@@ -1,7 +1,8 @@
-use fs_err as fs;
+use fs_err::{self as fs, File};
 use std::{
     collections::BTreeMap,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
+    io::Write,
     os::windows::fs::FileTypeExt,
     path::{Path, PathBuf},
 };
@@ -9,7 +10,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    errors::AppResult,
+    errors::{AppResult, RedefaulterError},
     platform::{ConfigEntry, DeviceSet},
 };
 
@@ -72,6 +73,29 @@ impl Profiles {
     }
     pub fn len(&self) -> usize {
         self.inner.len()
+    }
+    pub fn get_mutable_profile(&mut self, profile_name: &str) -> Option<&mut AppOverride> {
+        let profile_os_str = OsString::from(profile_name);
+        self.inner.get_mut(&profile_os_str)
+    }
+    pub fn save_profile(&self, profile_name: &str) -> AppResult<()> {
+        let profile_os_str = OsString::from(profile_name);
+        let profile = self
+            .inner
+            .get(&profile_os_str)
+            .ok_or(RedefaulterError::ProfileNotFound(profile_name.to_owned()))?;
+
+        let profile_toml = toml::to_string(profile)?;
+        let mut profile_path = PathBuf::from(PROFILES_PATH);
+        profile_path.push(profile_name);
+        profile_path.set_extension("toml");
+
+        let mut file = File::create(profile_path)?;
+        file.write_all(profile_toml.as_bytes())?;
+        file.flush()?;
+        file.sync_all()?;
+
+        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ffi::OsString};
+use std::{borrow::BorrowMut, collections::BTreeMap, ffi::OsString};
 
 use muda::{CheckMenuItem, IsMenuItem, Submenu};
 use tao::event_loop::ControlFlow;
@@ -12,10 +12,11 @@ use crate::{
     app::App,
     errors::AppResult,
     platform::{
-        AudioNightmare, ConfigDevice, ConfigEntry, DeviceSet, Discovered, DiscoveredDevice,
-        PlatformSettings,
+        AudioNightmare, ConfigDevice, ConfigEntry, DeviceRole, DeviceSet, Discovered,
+        DiscoveredDevice, PlatformSettings,
     },
     profiles::{AppOverride, PROFILES_PATH},
+    tray_menu::TrayDevice,
 };
 
 pub mod common_ids {
@@ -35,6 +36,8 @@ pub const TOOLTIP_PREFIX: &str = "Redefaulter";
 
 use common_ids::*;
 
+use super::DeviceSelectionType;
+
 impl App {
     pub fn build_tray_late(&self) -> AppResult<TrayIcon> {
         let menu = Menu::new();
@@ -52,7 +55,7 @@ impl App {
 
         append_root(&menu)?;
 
-        // We create the icon once the event loop is actually running
+        // We create the icon late (once the event loop is actually running)
         // to prevent issues like https://github.com/tauri-apps/tray-icon/issues/90
         let handle = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
@@ -187,11 +190,55 @@ impl App {
             IGNORE_ID => {
                 self.update_tray_menu()?;
             }
-            guid if id.starts_with(CONFIG_DEFAULT_ID) => {
+            tray_device if id.starts_with(DEVICE_PREFIX) => {
+                let tray_device = serde_plain::from_str::<TrayDevice>(tray_device)?;
+
+                // println!("{tray_device:#?}");
+
+                self.handle_tray_device_selection(tray_device)?;
+
+                // println!("{:#?}", self.settings.platform.default_devices);
+
                 self.update_tray_menu()?;
             }
             _ => (),
         }
+        Ok(())
+    }
+    fn handle_tray_device_selection(&mut self, tray_device: TrayDevice) -> AppResult<()> {
+        let set_to_modify = match &tray_device.destination {
+            DeviceSelectionType::ConfigDefault => {
+                self.settings.platform.default_devices.borrow_mut()
+            }
+            DeviceSelectionType::Profile(profile) => self
+                .profiles
+                .get_mutable_profile(profile)
+                .unwrap()
+                .override_set
+                .borrow_mut(),
+        };
+
+        match &tray_device.guid {
+            Some(guid) => {
+                self.endpoints
+                    .update_config_entry(set_to_modify, &tray_device.role, guid, true)?;
+            }
+            None => set_to_modify.clear_role(&tray_device.role),
+        }
+
+        match &tray_device.destination {
+            DeviceSelectionType::ConfigDefault => {
+                self.settings.save(&self.config_path)?;
+            }
+            DeviceSelectionType::Profile(profile) => {
+                self.profiles.save_profile(profile)?;
+            }
+        }
+
+        // println!("{:#?}", self.get_damaged_devices(&self.active_profiles));
+
+        self.change_devices_if_needed()?;
+
         Ok(())
     }
 }
@@ -211,10 +258,68 @@ fn append_root(menu: &Menu) -> AppResult<()> {
     Ok(())
 }
 
-/// An enum to help with titling submenus.
-pub enum DeviceSelectionType {
-    /// This set of device selections is for the app's globally desired default
-    ConfigDefault,
-    /// This set of device selections is for changing a profile's set defaults
-    Profile,
+pub fn build_device_checks(
+    devices: &BTreeMap<String, DiscoveredDevice>,
+    selection_type: &DeviceSelectionType,
+    role: &DeviceRole,
+    config_device: &ConfigDevice,
+    discovered_device: Option<&DiscoveredDevice>,
+) -> Vec<Box<dyn IsMenuItem>> {
+    let mut items: Vec<Box<dyn IsMenuItem>> = Vec::new();
+
+    use DeviceSelectionType::*;
+    let none_text = match selection_type {
+        ConfigDefault => "None",
+        Profile(_) => "No Override",
+    };
+
+    // Dunno if I want to keep it like this
+    // or be prefix-none
+    let none_item = TrayDevice::none(selection_type, role);
+    items.push(Box::new(CheckMenuItem::with_id(
+        &none_item.to_string(),
+        &none_text,
+        true,
+        config_device.is_empty(),
+        None,
+    )));
+
+    items.push(Box::new(PredefinedMenuItem::separator()));
+
+    let mut device_found = false;
+
+    for device in devices.values() {
+        let tray_device = TrayDevice::new(selection_type, role, &device.guid);
+        let chosen = if let Some(chosen) = discovered_device.as_ref() {
+            device_found = true;
+            *chosen.guid == device.guid
+        } else {
+            false
+        };
+        items.push(Box::new(CheckMenuItem::with_id(
+            &tray_device.to_string(),
+            &device.to_string(),
+            true,
+            chosen,
+            None,
+        )));
+    }
+
+    // Checking if we have a device configured but wasn't in our list of known active devices
+    if !config_device.is_empty() && !device_found {
+        items.push(Box::new(PredefinedMenuItem::separator()) as Box<dyn IsMenuItem>);
+        // Giving this an ignore id, since if someone clicks it
+        // it unchecks the listing in the tray, when instead the user
+        // should be clicking the None item to clear the config entry.
+        let derived_name = format!("(Not Found) {}", config_device.to_string());
+        items.push(Box::new(CheckMenuItem::with_id(
+            IGNORE_ID,
+            &derived_name,
+            true,
+            true,
+            None,
+        )));
+    }
+
+    items
 }

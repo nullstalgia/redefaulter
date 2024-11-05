@@ -48,7 +48,9 @@ pub struct AudioNightmare {
     /// Existing devices attached to the host
     pub recording_devices: BTreeMap<String, DiscoveredDevice>,
     /// Regex for fuzzy-matching devices with numeric prefixes
-    regex: Regex,
+    regex_finding: Regex,
+    /// Regex for removing numeric prefixes from devices to allow for fuzzy-matching later
+    regex_replacing: Regex,
     /// Used to tell `App` that something has changed
     event_proxy: Option<EventLoopProxy<CustomEvent>>,
     /// When `true`, *all* actions taken towards the Console/Multimedia Role
@@ -117,7 +119,9 @@ impl AudioNightmare {
 
         // This regex matches an opening parenthesis '(', followed by one or more digits '\d+',
         // a dash '-', a space ' ', and captures the rest of the string '(.+?)' until the closing parenthesis.
-        let regex = Regex::new(r"\(\d+- (.+?)\)").expect("Regex failed to build");
+        let regex_finding = Regex::new(r"\(\d+- (.+?)\)").expect("Regex failed to build");
+
+        let regex_replacing = Regex::new(r"\((\d+)-\s*(.+?)\)").expect("Regex failed to build");
 
         let unify_communications_devices = if let Some(config) = config {
             config.unify_communications_devices
@@ -132,7 +136,8 @@ impl AudioNightmare {
             // callback_rx: rx,
             playback_devices,
             recording_devices,
-            regex,
+            regex_finding,
+            regex_replacing,
             unify_communications_devices,
             event_proxy,
         })
@@ -312,7 +317,7 @@ impl AudioNightmare {
         }
         let find = |map: &'a BTreeMap<String, DiscoveredDevice>| -> Option<&'a DiscoveredDevice> {
             for device in map.values() {
-                let simplified_name = self.regex.replace(&device.human_name, "($1)");
+                let simplified_name = self.regex_finding.replace(&device.human_name, "($1)");
                 if name == device.human_name || name == simplified_name {
                     return Some(device);
                 }
@@ -434,6 +439,48 @@ impl AudioNightmare {
     pub fn update_config(&mut self, config: &PlatformSettings) {
         self.unify_communications_devices = config.unify_communications_devices;
     }
+    pub fn update_config_entry(
+        &self,
+        entry: &mut DeviceSet<ConfigEntry>,
+        role: &DeviceRole,
+        guid: &str,
+        make_fuzzy_name: bool,
+    ) -> AppResult<()> {
+        let real_device = self
+            .device_by_guid(&role.into(), guid)
+            .ok_or(RedefaulterError::DeviceNotFound(guid.to_string()))?;
+
+        // Clear before modifying
+        let new_device = self.device_to_config_entry(real_device, make_fuzzy_name);
+        entry.update_role(role, new_device);
+
+        Ok(())
+    }
+    fn device_to_config_entry(
+        &self,
+        discovered: &WindowsAudioDevice<Discovered>,
+        make_fuzzy_name: bool,
+    ) -> WindowsAudioDevice<ConfigEntry> {
+        let (human_name, guid) = {
+            if make_fuzzy_name {
+                let fuzzy_name = self
+                    .regex_replacing
+                    .replace_all(&discovered.human_name, "($2)");
+
+                (fuzzy_name.to_string(), "".to_string())
+            } else {
+                (discovered.human_name.to_owned(), discovered.guid.to_owned())
+            }
+        };
+
+        let config_device: WindowsAudioDevice<ConfigEntry> = WindowsAudioDevice {
+            human_name,
+            guid,
+            _state: PhantomData,
+        };
+
+        config_device
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -453,6 +500,15 @@ impl<State> WindowsAudioDevice<State> {
         self.human_name.is_empty() && self.guid.is_empty()
     }
 }
+
+// impl WindowsAudioDevice<Discovered> {
+//     fn as_generic(&self) -> WindowsAudioDevice<ConfigEntry> {
+//         let generic_name = self.human_name
+//         WindowsAudioDevice {
+
+//         }
+//     }
+// }
 
 // impl WindowsAudioDevice<Discovered> {
 //     pub fn direction(&self) -> Direction {
@@ -495,6 +551,53 @@ pub struct DeviceSet<State> {
     pub recording: WindowsAudioDevice<State>,
     #[serde(default)]
     pub recording_comms: WindowsAudioDevice<State>,
+}
+
+impl<State> DeviceSet<State> {
+    pub fn update_role(&mut self, role: &DeviceRole, new_device: WindowsAudioDevice<State>) {
+        use DeviceRole::*;
+        match role {
+            Playback => self.playback = new_device,
+            PlaybackComms => self.playback_comms = new_device,
+            Recording => self.recording = new_device,
+            RecordingComms => self.recording_comms = new_device,
+        }
+    }
+    pub fn clear_role(&mut self, role: &DeviceRole) {
+        use DeviceRole::*;
+        match role {
+            Playback => self.playback.clear(),
+            PlaybackComms => self.playback_comms.clear(),
+            Recording => self.recording.clear(),
+            RecordingComms => self.recording_comms.clear(),
+        }
+    }
+}
+
+// Could maybe derive from above struct?
+// If so, could lower amount of platform-specific code that just copies stuff from platform specific structs?
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeviceRole {
+    Playback,
+    PlaybackComms,
+    Recording,
+    RecordingComms,
+}
+
+impl From<&DeviceRole> for Direction {
+    fn from(value: &DeviceRole) -> Self {
+        match value {
+            DeviceRole::Playback | DeviceRole::PlaybackComms => Self::Render,
+            DeviceRole::Recording | DeviceRole::RecordingComms => Self::Capture,
+        }
+    }
+}
+
+impl From<DeviceRole> for Direction {
+    fn from(value: DeviceRole) -> Self {
+        Self::from(&value)
+    }
 }
 
 impl<State> Display for WindowsAudioDevice<State> {

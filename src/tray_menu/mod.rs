@@ -5,3 +5,5 @@ pub use windows::*;
 
 mod common;
 pub use common::*;
+mod device_ser;
+pub use device_ser::*;

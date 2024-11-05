@@ -18,6 +18,8 @@ pub enum RedefaulterError {
     TomlSer(#[from] toml::ser::Error),
     #[error("TOML Deserialization Error: {0}")]
     TomlDe(#[from] toml::de::Error),
+    #[error("Plain Serde Error: {0}")]
+    PlainSerde(#[from] serde_plain::Error),
     #[error("Tray Error: {0}")]
     Tray(#[from] tray_icon::Error),
     #[error("Tray Menu Error: {0}")]
@@ -29,6 +31,10 @@ pub enum RedefaulterError {
     // My errors
     #[error("Field not found: {0}")]
     FieldNotFound(#[from] menu_macro::MenuMacroError),
+    #[error("Device not found: {0}")]
+    DeviceNotFound(String),
+    #[error("Profile not found: {0}")]
+    ProfileNotFound(String),
     #[error("Failed to get active processes")]
     FailedToGetProcesses,
     #[error("Failed to get working directory")]
@@ -39,4 +45,6 @@ pub enum RedefaulterError {
     EventLoopClosed,
     #[error("An instance of the application is already open")]
     AlreadyExists,
+    #[error("Failed to parse tray menu ID: {0}")]
+    TrayMenuIdParse(String),
 }
