@@ -25,8 +25,6 @@ pub mod common_ids {
     pub const RELOAD_ID: &str = "reload";
     pub const REVEAL_ID: &str = "reveal";
 
-    pub const CONFIG_DEFAULT_ID: &str = "config";
-
     pub const DEVICE_PREFIX: &str = "device";
 
     pub const IGNORE_ID: &str = "ignore";
@@ -92,21 +90,6 @@ impl App {
 
         menu.append(&settings_submenu)?;
 
-        // wretched de-evolution in the name of dynamic dispatch
-
-        // let items: Vec<CheckMenuItem> = settings.build_check_menu_items();
-        // let item_refs: Vec<&dyn IsMenuItem> =
-        //     items.iter().map(|item| item as &dyn IsMenuItem).collect();
-        // menu.prepend_items(&item_refs)?;
-
-        // menu.append_items(
-        //     &settings
-        //         .build_check_menu_items()
-        //         .iter()
-        //         .map(|item| item as &dyn IsMenuItem)
-        //         .collect::<Vec<_>>(),
-        // )?;
-
         menu.append(&PredefinedMenuItem::separator())?;
 
         let total_profiles = self.profiles.len();
@@ -120,7 +103,7 @@ impl App {
         } else {
             let item = MenuItem::new("Active Profiles:", false, None);
             menu.append(&item)?;
-            // Eh, muda also just calls append in a loop with the _items version
+            // Generate submenus to edit active profiles
             for (profile_name, profile) in self.active_profiles.iter() {
                 let Some(profile_name_str) = profile_name.to_str() else {
                     // let incomplete_item = SubmenuBuilder::new()
@@ -133,43 +116,14 @@ impl App {
                     // continue;
                     panic!();
                 };
-                let mut submenus: Vec<Box<dyn IsMenuItem>> = Vec::new();
-                let playback_submenu = self.tray_build_platform_device_selection(
+                let profile_submenus = self.tray_platform_device_selection(
                     &DeviceSelectionType::Profile(profile_name_str),
-                    &DeviceRole::Playback,
-                    &profile.override_set.playback,
+                    &profile.override_set,
                 )?;
-                submenus.push(Box::new(playback_submenu));
-
-                if !self.settings.platform.unify_communications_devices {
-                    let playback_comms_submenu = self.tray_build_platform_device_selection(
-                        &DeviceSelectionType::Profile(profile_name_str),
-                        &DeviceRole::PlaybackComms,
-                        &profile.override_set.playback_comms,
-                    )?;
-                    submenus.push(Box::new(playback_comms_submenu));
-                }
-                let recording_submenu = self.tray_build_platform_device_selection(
-                    &DeviceSelectionType::Profile(profile_name_str),
-                    &DeviceRole::Recording,
-                    &profile.override_set.recording,
-                )?;
-                submenus.push(Box::new(recording_submenu));
-                if !self.settings.platform.unify_communications_devices {
-                    let recording_comms_submenu = self.tray_build_platform_device_selection(
-                        &DeviceSelectionType::Profile(profile_name_str),
-                        &DeviceRole::RecordingComms,
-                        &profile.override_set.recording_comms,
-                    )?;
-                    submenus.push(Box::new(recording_comms_submenu));
-                }
-
-                // let profile_item = SubmenuBuilder::new()
-                //     .enabled(true)
-                //     .item(&playback_submenu)
-                //     .text("Playback")
-                //     .build()?;
-                let submenu_refs = submenus.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
+                let submenu_refs = profile_submenus
+                    .iter()
+                    .map(|s| s.as_ref())
+                    .collect::<Vec<_>>();
                 let item = SubmenuBuilder::new()
                     .enabled(true)
                     .items(&submenu_refs)
@@ -182,11 +136,15 @@ impl App {
         menu.append(&PredefinedMenuItem::separator())?;
 
         // Device selection for global default
-        let menus = self.tray_platform_config_device_selection()?;
-
-        for submenu in menus.into_iter() {
-            menu.append(&submenu)?;
-        }
+        let profile_submenus = self.tray_platform_device_selection(
+            &DeviceSelectionType::ConfigDefault,
+            &self.settings.platform.default_devices,
+        )?;
+        let submenu_refs = profile_submenus
+            .iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<_>>();
+        menu.append_items(&submenu_refs)?;
 
         append_root(&menu)?;
 

@@ -23,6 +23,9 @@ pub enum DeviceSelectionType<'a> {
 pub struct TrayDevice<'a> {
     pub destination: DeviceSelectionType<'a>,
     pub role: DeviceRole,
+    /// If `None`, will clear the profile's entry for that role.
+    ///
+    /// Otherwise, replaces entry with device associated with the GUID
     pub guid: Option<&'a str>,
 }
 
@@ -54,22 +57,21 @@ impl<'de: 'a, 'a> Deserialize<'de> for TrayDevice<'a> {
         let buf: &str = Deserialize::deserialize(deserializer)?;
 
         // Example input:
-        // device~~playback~1234567890
+        // device||playback|1234567890
         // ^ a default-config entry uses a 0-length name, to avoid a potential collision with a file named "config"
-        // device~00-notepad~playback
+        // device|00-notepad|playback
         // ^ unsetting device by omitting guid field and accompanying delimiter
 
         let parts: Vec<&str> = buf.split(TRAY_ID_DELIMITER).collect();
+        if parts[0] != DEVICE_PREFIX {
+            return Err(D::Error::custom(
+                "Tried to deserialize a non-tray-id string",
+            ));
+        }
 
         match parts.len() {
             3 | 4 => {
-                if parts[0] != DEVICE_PREFIX {
-                    return Err(D::Error::custom(
-                        "Tried to deserialize a non-tray-id string",
-                    ));
-                }
                 // Since I can't get the size of the split string without collecting it first
-                // let parts_iter = parts.into_iter();
                 let destination: DeviceSelectionType = {
                     let dest = parts[1];
                     if dest.is_empty() {
