@@ -1,20 +1,13 @@
-use std::collections::BTreeMap;
-
-use muda::{PredefinedMenuItem, Submenu, SubmenuBuilder};
-use tray_icon::menu::{CheckMenuItem, IsMenuItem, MenuEvent, MenuItem};
+use muda::{Submenu, SubmenuBuilder};
+use tray_icon::menu::IsMenuItem;
 use wasapi::Direction;
 
 use crate::{
     app::App,
-    errors::{AppResult, RedefaulterError},
-    platform::{
-        AudioNightmare, ConfigDevice, ConfigEntry, DeviceRole, DeviceSet, Discovered,
-        DiscoveredDevice, PlatformSettings,
-    },
-    tray_menu::{build_device_checks, DeviceSelectionType, TrayDevice},
+    errors::AppResult,
+    platform::{ConfigDevice, ConfigEntry, DeviceRole, DeviceSet},
+    tray_menu::{build_device_checks, DeviceSelectionType},
 };
-
-use super::common_ids::*;
 
 impl App {
     pub fn tray_platform_device_selection(
@@ -26,7 +19,6 @@ impl App {
         let mut submenus: Vec<Box<dyn IsMenuItem>> = Vec::new();
 
         use DeviceRole::*;
-        use DeviceSelectionType::*;
 
         submenus.push(Box::new(self.tray_build_platform_device_selection(
             destination,

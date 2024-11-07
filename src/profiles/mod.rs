@@ -1,13 +1,12 @@
 use dashmap::DashMap;
 use fs_err::{self as fs, File};
 use std::{
-    cell::LazyCell,
     collections::{BTreeMap, BTreeSet},
     ffi::{OsStr, OsString},
     io::Write,
     os::windows::fs::FileTypeExt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use serde::{Deserialize, Serialize};
@@ -32,7 +31,7 @@ pub struct Profiles {
     processes: Arc<DashMap<u32, Process>>,
 }
 
-pub const WILDCARD_ANY_PROCESS: LazyCell<&Path> = LazyCell::new(|| Path::new("*"));
+pub static WILDCARD_ANY_PROCESS: LazyLock<&Path> = LazyLock::new(|| Path::new("*"));
 
 pub const PROFILES_PATH: &str = "profiles";
 
@@ -88,7 +87,7 @@ impl Profiles {
         self.active.len()
     }
     pub fn any_active(&self) -> bool {
-        self.active.len() != 0
+        !self.active.is_empty()
     }
     pub fn get_mutable_profile(&mut self, profile_name: &str) -> Option<&mut AppOverride> {
         self.inner.get_mut(OsStr::new(profile_name))
@@ -149,7 +148,7 @@ impl Profiles {
         let profiles_changed = new_profiles.iter().any(|n| !self.active.contains(*n));
         // Only update menu and local map when damaged
         if force_update || length_changed || profiles_changed {
-            self.active = new_profiles.into_iter().map(|k| k.clone()).collect();
+            self.active = new_profiles.into_iter().cloned().collect();
 
             Ok(true)
         } else {

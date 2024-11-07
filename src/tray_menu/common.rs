@@ -1,8 +1,4 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::BTreeMap,
-    ffi::OsString,
-};
+use std::{borrow::BorrowMut, collections::BTreeMap};
 
 use muda::{CheckMenuItem, IsMenuItem, Submenu};
 use tao::event_loop::ControlFlow;
@@ -14,12 +10,9 @@ use tray_icon::{
 
 use crate::{
     app::App,
-    errors::{AppResult, RedefaulterError},
-    platform::{
-        AudioNightmare, ConfigDevice, ConfigEntry, DeviceRole, DeviceSet, Discovered,
-        DiscoveredDevice, PlatformSettings,
-    },
-    profiles::{AppOverride, PROFILES_PATH},
+    errors::AppResult,
+    platform::{ConfigDevice, DeviceRole, DiscoveredDevice},
+    profiles::PROFILES_PATH,
     tray_menu::TrayDevice,
 };
 
@@ -44,7 +37,7 @@ impl App {
     pub fn build_tray_late(&self) -> AppResult<TrayIcon> {
         let menu = Menu::new();
 
-        let loading = MenuItem::new(format!("Loading profiles..."), false, None);
+        let loading = MenuItem::new("Loading profiles...", false, None);
 
         menu.append(&loading)?;
 
@@ -99,7 +92,7 @@ impl App {
         let total_profiles = self.profiles.len();
 
         if total_profiles == 0 {
-            let text = format!("No Profiles Loaded!");
+            let text = "No Profiles Loaded!";
             menu.append(&MenuItem::new(text, false, None))?;
         } else if !self.profiles.any_active() {
             let text = format!("No Profiles Active ({total_profiles} loaded)");
@@ -294,8 +287,8 @@ pub fn build_device_checks(
     // or be prefix-none
     let none_item = TrayDevice::none(selection_type, role);
     items.push(Box::new(CheckMenuItem::with_id(
-        &none_item.to_string(),
-        &none_text,
+        none_item.to_string(),
+        none_text,
         true,
         config_device.is_empty(),
         None,
@@ -314,8 +307,8 @@ pub fn build_device_checks(
             false
         };
         items.push(Box::new(CheckMenuItem::with_id(
-            &tray_device.to_string(),
-            &device.to_string(),
+            tray_device.to_string(),
+            device.to_string(),
             true,
             chosen,
             None,
@@ -328,7 +321,7 @@ pub fn build_device_checks(
         // Giving this an ignore id, since if someone clicks it
         // it unchecks the listing in the tray, when instead the user
         // should be clicking the None item to clear the config entry.
-        let derived_name = format!("(Not Found) {}", config_device.to_string());
+        let derived_name = format!("(Not Found) {config_device}");
         items.push(Box::new(CheckMenuItem::with_id(
             IGNORE_ID,
             &derived_name,

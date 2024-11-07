@@ -4,8 +4,7 @@ use crate::profiles::AppOverride;
 
 use dashmap::DashMap;
 use serde::Deserialize;
-use std::cell::LazyCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, sync::mpsc::Sender};
 use tao::event_loop::EventLoopProxy;

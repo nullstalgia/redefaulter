@@ -1,6 +1,4 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    ffi::OsString,
     path::PathBuf,
     sync::{
         mpsc::{self},
@@ -14,13 +12,13 @@ use dashmap::DashMap;
 use takeable::Takeable;
 use tao::event_loop::{ControlFlow, EventLoopProxy};
 use tracing::*;
-use tray_icon::{menu::MenuEvent, TrayIcon};
+use tray_icon::TrayIcon;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
-    platform::{AudioEndpointNotification, AudioNightmare, ConfigEntry, DeviceSet, Discovered},
-    processes::{self, Process},
-    profiles::{AppOverride, Profiles},
+    platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
+    processes,
+    profiles::Profiles,
     settings::Settings,
 };
 

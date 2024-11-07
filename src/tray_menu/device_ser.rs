@@ -1,5 +1,3 @@
-use std::ffi::OsString;
-
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_plain::derive_display_from_serialize;
@@ -81,7 +79,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for TrayDevice<'a> {
                     }
                 };
                 let role: DeviceRole = serde_plain::from_str(parts[2]).map_err(D::Error::custom)?;
-                let guid = parts.get(3).map(|s| *s);
+                let guid = parts.get(3).copied();
 
                 Ok(TrayDevice {
                     destination,
@@ -89,11 +87,9 @@ impl<'de: 'a, 'a> Deserialize<'de> for TrayDevice<'a> {
                     guid,
                 })
             }
-            _ => {
-                return Err(D::Error::custom(
-                    "Invalid number of components in TrayDevice deserialization",
-                ))
-            }
+            _ => Err(D::Error::custom(
+                "Invalid number of components in TrayDevice deserialization",
+            )),
         }
     }
 }
