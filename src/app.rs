@@ -236,7 +236,6 @@ impl App {
         }
         Ok(())
     }
-    // TODO: The call from lib::WaitCancelled runs a *lot* when changing devices.
     pub fn update_defaults(&mut self, line: u32) -> AppResult<()> {
         debug!("Updating defaults! {line}");
         self.current_defaults = self.endpoints.get_current_defaults()?;

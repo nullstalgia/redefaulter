@@ -153,6 +153,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
                 if requested_resume.is_some() {
                     app.update_defaults(line!()).unwrap();
                     app.update_tray_menu().unwrap();
+                    *control_flow = ControlFlow::Wait;
                 }
             }
             Event::WindowEvent {
