@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     path::PathBuf,
     sync::{
@@ -36,15 +36,13 @@ pub struct App {
     pub endpoints: AudioNightmare,
     pub profiles: Profiles,
     pub process_watcher_handle: Takeable<JoinHandle<AppResult<()>>>,
-    pub processes: Arc<DashMap<u32, Process>>,
     // TODO option for this to be
     // - on-launch devices
     // - config'd devices
     // - never taken into account
     // pub config_defaults: DeviceSet<ConfigEntry>,
+    // TODO move out of App?
     pub current_defaults: DeviceSet<Discovered>,
-
-    pub active_profiles: BTreeMap<OsString, AppOverride>,
 
     // Option instead of Takeable due to late initialization in EventLoop Init
     // Or possible non-initialization in the case of CLI commands
@@ -101,41 +99,16 @@ impl App {
 
         let current_defaults = endpoints.get_current_defaults()?;
 
-        let active_profiles = BTreeMap::new();
-
         Ok(Self {
             endpoints,
-            profiles: Profiles::build()?,
-            processes,
+            profiles: Profiles::build(processes)?,
             process_watcher_handle: Takeable::new(process_watcher_handle),
             // config_defaults,
             current_defaults,
-            active_profiles,
             settings,
             config_path,
             tray_menu: None,
         })
-    }
-    /// Run through all of the running processes and find which ones match the user's profiles
-    pub fn determine_active_profiles(&self) -> BTreeMap<&OsString, &AppOverride> {
-        let mut active_profiles = BTreeMap::new();
-        let total_profiles = self.profiles.inner.len();
-        for process in self.processes.iter() {
-            if active_profiles.len() == total_profiles {
-                break;
-            }
-            for (profile_name, profile) in self.profiles.inner.iter() {
-                if active_profiles.contains_key(profile_name) {
-                    continue;
-                }
-                if process.profile_matches(profile) {
-                    active_profiles.insert(profile_name, profile);
-                    break;
-                }
-            }
-        }
-
-        active_profiles
     }
     /// Given a list of profiles, will return the roles that need to be changed to fit the active profiles.
     ///
@@ -143,19 +116,23 @@ impl App {
     /// on top of each other, discarding any devices that aren't connected to the system.
     pub fn get_damaged_devices(
         &self,
-        active_profiles: &BTreeMap<OsString, AppOverride>,
+        only_config_default: bool, // active_profiles: Vec<&DeviceSet<ConfigEntry>>,
     ) -> Option<DeviceSet<Discovered>> {
         let config_default_once = std::iter::once(&self.settings.platform.default_devices);
-        let profiles = active_profiles
-            .values()
-            .map(|p| &p.override_set)
+
+        let active_overrides = self
+            .profiles
+            .get_active_override_sets()
+            // Discard all active overrides if we're just shutting down
+            // (There might be a nicer way to do this, but this is concise and doesn't have type mismatch issues)
+            .filter(|_| !only_config_default)
             .chain(config_default_once)
             .rev();
 
         // TODO Consider a DeviceActions type with Options on the Strings
         let mut device_actions = DeviceSet::<Discovered>::default();
 
-        for profile in profiles {
+        for profile in active_overrides {
             self.endpoints
                 .overlay_available_devices(&mut device_actions, profile);
         }
@@ -170,32 +147,10 @@ impl App {
             Some(device_actions)
         }
     }
-    /// Check running processes and update active profiles. Also sends new profiles to tray menu.
-    ///
-    /// Only need to call this when processes change
     // TODO find more graceful way to do the initial/force update
     pub fn update_active_profiles(&mut self, force_update: bool) -> AppResult<()> {
-        let new_profiles = self.determine_active_profiles();
-        let length_changed = new_profiles.len() != self.active_profiles.len();
-        let profiles_changed = new_profiles
-            .keys()
-            .any(|n| !self.active_profiles.contains_key(*n));
-        // Only update menu and local map when damaged
-        if force_update || length_changed || profiles_changed {
-            self.active_profiles = new_profiles
-                .into_iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-
-            // if let Some(menu) = self.tray_menu.as_mut() {
-            //     menu.update_menu(
-            //         self.profiles.len(),
-            //         &self.active_profiles,
-            //         &self.endpoints,
-            //         &self.current_defaults,
-            //         &self.settings.platform,
-            //     )?;
-            // }
+        let profiles_changed = self.profiles.update_active_profiles(force_update)?;
+        if profiles_changed {
             self.update_tray_menu()?;
         }
         Ok(())
@@ -236,20 +191,20 @@ impl App {
         }
         Ok(())
     }
-    pub fn update_defaults(&mut self, line: u32) -> AppResult<()> {
-        debug!("Updating defaults! {line}");
+    pub fn update_defaults(&mut self) -> AppResult<()> {
+        debug!("Updating defaults!");
         self.current_defaults = self.endpoints.get_current_defaults()?;
         Ok(())
     }
     pub fn change_devices_if_needed(&mut self) -> AppResult<()> {
-        if let Some(actions) = self.get_damaged_devices(&self.active_profiles) {
+        if let Some(actions) = self.get_damaged_devices(false) {
             self.endpoints.change_devices(actions)?;
-            self.update_defaults(line!())?;
+            self.update_defaults()?;
         }
         Ok(())
     }
     pub fn back_to_default(&self) -> AppResult<()> {
-        if let Some(actions) = self.get_damaged_devices(&BTreeMap::new()) {
+        if let Some(actions) = self.get_damaged_devices(true) {
             self.endpoints.change_devices(actions)?;
         }
         Ok(())

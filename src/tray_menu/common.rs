@@ -1,4 +1,8 @@
-use std::{borrow::BorrowMut, collections::BTreeMap, ffi::OsString};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    collections::BTreeMap,
+    ffi::OsString,
+};
 
 use muda::{CheckMenuItem, IsMenuItem, Submenu};
 use tao::event_loop::ControlFlow;
@@ -10,7 +14,7 @@ use tray_icon::{
 
 use crate::{
     app::App,
-    errors::AppResult,
+    errors::{AppResult, RedefaulterError},
     platform::{
         AudioNightmare, ConfigDevice, ConfigEntry, DeviceRole, DeviceSet, Discovered,
         DiscoveredDevice, PlatformSettings,
@@ -68,7 +72,7 @@ impl App {
             let new_tooltip = format!(
                 "{} - {} profiles active",
                 TOOLTIP_PREFIX,
-                self.active_profiles.len()
+                self.profiles.active_len()
             );
             handle.set_tooltip(Some(new_tooltip))?;
             let new_menu = self.build_tray_contents()?;
@@ -97,24 +101,27 @@ impl App {
         if total_profiles == 0 {
             let text = format!("No Profiles Loaded!");
             menu.append(&MenuItem::new(text, false, None))?;
-        } else if self.active_profiles.is_empty() {
+        } else if !self.profiles.any_active() {
             let text = format!("No Profiles Active ({total_profiles} loaded)");
             menu.append(&MenuItem::new(text, false, None))?;
         } else {
             let item = MenuItem::new("Active Profiles:", false, None);
             menu.append(&item)?;
             // Generate submenus to edit active profiles
-            for (profile_name, profile) in self.active_profiles.iter() {
+            for (profile_name, profile) in self.profiles.get_active_profiles() {
                 let Some(profile_name_str) = profile_name.to_str() else {
-                    // let incomplete_item = SubmenuBuilder::new()
-                    //     .enabled(true)
-                    //     .item(&playback_submenu)
-                    //     .text(profile_name_str)
-                    //     .build()?;
-                    // menu.append(&incomplete_item)?;
-                    // TODO: Opener::reveal the item
-                    // continue;
-                    panic!();
+                    let incomplete_item = SubmenuBuilder::new()
+                        .enabled(true)
+                        .text("Invalid UTF-8 Filename!")
+                        .build()?;
+                    menu.append(&incomplete_item)?;
+                    continue;
+                    // TODO: Opener::reveal the item?
+                    // Except I can't put the filename in the ID without losing content....
+                    // I could maybe represent *all* OsStrings destined to be
+                    // sent into the menu_id's &str as hex bytes/base64 or something,
+                    // but I'd rather just wait for someone to ask for it than spend a lot
+                    // of time on it right now.
                 };
                 let profile_submenus = self.tray_platform_device_selection(
                     &DeviceSelectionType::Profile(profile_name_str),

@@ -140,7 +140,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             // (nothing else right now uses WaitUntil)
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 debug!("Done waiting for audio endpoint timeout!");
-                app.update_defaults(line!()).unwrap();
+                app.update_defaults().unwrap();
                 app.change_devices_if_needed().unwrap();
                 app.update_tray_menu().unwrap();
                 *control_flow = ControlFlow::Wait;
@@ -151,7 +151,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
                 // We had a wait time, but something else came in before we could finish waiting,
                 // so just check now
                 if requested_resume.is_some() {
-                    app.update_defaults(line!()).unwrap();
+                    app.update_defaults().unwrap();
                     app.update_tray_menu().unwrap();
                     *control_flow = ControlFlow::Wait;
                 }

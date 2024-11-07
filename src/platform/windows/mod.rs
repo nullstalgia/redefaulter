@@ -448,7 +448,7 @@ impl AudioNightmare {
     ) -> AppResult<()> {
         let real_device = self
             .device_by_guid(&role.into(), guid)
-            .ok_or(RedefaulterError::DeviceNotFound(guid.to_string()))?;
+            .ok_or_else(|| RedefaulterError::DeviceNotFound(guid.to_string()))?;
 
         // Clear before modifying
         let new_device = self.device_to_config_entry(real_device, make_fuzzy_name);

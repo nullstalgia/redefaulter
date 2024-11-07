@@ -1,11 +1,13 @@
+use dashmap::DashMap;
 use fs_err::{self as fs, File};
 use std::{
     cell::LazyCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::{OsStr, OsString},
     io::Write,
     os::windows::fs::FileTypeExt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
@@ -13,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{ConfigEntry, DeviceSet},
+    processes::Process,
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -24,7 +27,9 @@ pub struct AppOverride {
 
 #[derive(Debug)]
 pub struct Profiles {
-    pub inner: BTreeMap<OsString, AppOverride>,
+    inner: BTreeMap<OsString, AppOverride>,
+    active: BTreeSet<OsString>,
+    processes: Arc<DashMap<u32, Process>>,
 }
 
 pub const WILDCARD_ANY_PROCESS: LazyCell<&Path> = LazyCell::new(|| Path::new("*"));
@@ -32,10 +37,12 @@ pub const WILDCARD_ANY_PROCESS: LazyCell<&Path> = LazyCell::new(|| Path::new("*"
 pub const PROFILES_PATH: &str = "profiles";
 
 impl Profiles {
-    pub fn build() -> AppResult<Self> {
+    pub fn build(processes: Arc<DashMap<u32, Process>>) -> AppResult<Self> {
         let dir = PathBuf::from(PROFILES_PATH);
         let mut profiles = Profiles {
             inner: BTreeMap::new(),
+            active: BTreeSet::new(),
+            processes,
         };
 
         if dir.exists() {
@@ -77,16 +84,24 @@ impl Profiles {
     pub fn len(&self) -> usize {
         self.inner.len()
     }
+    pub fn active_len(&self) -> usize {
+        self.active.len()
+    }
+    pub fn any_active(&self) -> bool {
+        self.active.len() != 0
+    }
     pub fn get_mutable_profile(&mut self, profile_name: &str) -> Option<&mut AppOverride> {
-        let profile_os_str = OsString::from(profile_name);
-        self.inner.get_mut(&profile_os_str)
+        self.inner.get_mut(OsStr::new(profile_name))
+    }
+    pub fn get_profile(&self, profile_name: &str) -> Option<&AppOverride> {
+        self.inner.get(OsStr::new(profile_name))
     }
     pub fn save_profile(&self, profile_name: &str) -> AppResult<()> {
         let profile_os_str = OsString::from(profile_name);
         let profile = self
             .inner
             .get(&profile_os_str)
-            .ok_or(RedefaulterError::ProfileNotFound(profile_name.to_owned()))?;
+            .ok_or_else(|| RedefaulterError::ProfileNotFound(profile_name.to_owned()))?;
 
         let profile_toml = toml::to_string(profile)?;
         let mut profile_path = PathBuf::from(PROFILES_PATH);
@@ -99,6 +114,61 @@ impl Profiles {
         file.sync_all()?;
 
         Ok(())
+    }
+    /// Check running processes and update active profiles.
+    ///
+    /// Returns `true` if there was a change in active profiles.
+    ///
+    /// Only need to call this when processes change, not audio endpoints.
+    pub fn update_active_profiles(
+        &mut self,
+        // processes: &DashMap<u32, Process>,
+        force_update: bool,
+    ) -> AppResult<bool> {
+        let mut active_profiles: BTreeSet<&OsString> = BTreeSet::new();
+        let total_profiles = self.inner.len();
+        for process in self.processes.iter() {
+            if active_profiles.len() == total_profiles {
+                break;
+            }
+            for (profile_name, profile) in self.inner.iter() {
+                if active_profiles.contains(profile_name) {
+                    continue;
+                }
+                if process.profile_matches(profile) {
+                    active_profiles.insert(profile_name);
+                    break;
+                }
+            }
+        }
+
+        // self.active = active_profiles;
+
+        let new_profiles = active_profiles;
+        let length_changed = new_profiles.len() != self.active.len();
+        let profiles_changed = new_profiles.iter().any(|n| !self.active.contains(*n));
+        // Only update menu and local map when damaged
+        if force_update || length_changed || profiles_changed {
+            self.active = new_profiles.into_iter().map(|k| k.clone()).collect();
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+    // Unwraps should be fine here, I want it to panic anyway if we try
+    // to get a profile that doesn't exist anymore.
+    pub fn get_active_override_sets(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = &DeviceSet<ConfigEntry>> {
+        self.active
+            .iter()
+            .map(|p| &self.inner.get(p).unwrap().override_set)
+    }
+    pub fn get_active_profiles(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&OsString, &AppOverride)> {
+        self.active.iter().map(|p| (p, self.inner.get(p).unwrap()))
     }
 }
 
