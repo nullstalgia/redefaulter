@@ -60,6 +60,9 @@ impl App {
 
         Ok(handle)
     }
+    pub fn kill_tray_menu(&mut self) -> Option<TrayIcon> {
+        self.tray_menu.take()
+    }
     pub fn update_tray_menu(&self) -> AppResult<()> {
         if let Some(handle) = self.tray_menu.as_ref() {
             let new_tooltip = format!(
@@ -186,8 +189,7 @@ impl App {
                 *control_flow = ControlFlow::Exit;
             }
             RELOAD_ID => {
-                // TODO Popup when failing to read a file?
-                self.reload_profiles().unwrap();
+                self.reload_profiles()?;
             }
             REVEAL_ID => {
                 opener::reveal(PROFILES_PATH)?;
@@ -206,6 +208,8 @@ impl App {
                 // debug!("{:#?}", self.settings.behavior);
             }
             IGNORE_ID => {
+                // Rebuilding menu here since if the user clicked a CheckItem,
+                // it would toggle visually but nothing would happen internally.
                 self.update_tray_menu()?;
             }
             tray_device if id.starts_with(DEVICE_PREFIX) => {

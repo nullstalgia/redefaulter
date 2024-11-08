@@ -3,6 +3,7 @@
 mod app;
 mod panic_handler;
 mod platform;
+mod popups;
 mod processes;
 mod profiles;
 mod settings;
@@ -162,7 +163,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             } => *control_flow = ControlFlow::Exit,
             Event::LoopDestroyed => {
                 debug!("Event loop destroyed!");
-                app.tray_menu.take();
+                app.kill_tray_menu();
                 app.back_to_default()
                     .expect("Failed to return devices to default!");
             }

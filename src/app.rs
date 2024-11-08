@@ -17,6 +17,7 @@ use tray_icon::TrayIcon;
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
+    popups::settings_load_failed_popup,
     processes,
     profiles::Profiles,
     settings::Settings,
@@ -27,6 +28,7 @@ pub enum CustomEvent {
     ProcessesChanged,
     AudioEndpointUpdate,
     AudioEndpointNotification(AudioEndpointNotification),
+    ReloadProfiles,
     ExitRequested,
 }
 
@@ -45,6 +47,8 @@ pub struct App {
     // Option instead of Takeable due to late initialization in EventLoop Init
     // Or possible non-initialization in the case of CLI commands
     pub tray_menu: Option<TrayIcon>,
+
+    pub event_proxy: EventLoopProxy<CustomEvent>,
 
     pub settings: Settings,
     pub config_path: PathBuf,
@@ -89,20 +93,45 @@ impl App {
 
         let config_path = PathBuf::from(config_name);
 
-        let settings = Settings::load(&config_path, false)?;
+        let settings = match Settings::load(&config_path, false) {
+            Ok(settings) => settings,
+            Err(RedefaulterError::TomlDe(e)) => {
+                error!("Settings load failed: {e}");
+                // TODO move human_span formatting into thiserror fmt attr?
+                let err_str = e.to_string();
+                // Only grabbing the top line since it has the human-readable line and column information
+                // (the error's span method is in *bytes*, not lines and columns)
+                let human_span = err_str.lines().next().unwrap_or("").to_owned();
+                let reason = e.message().to_owned();
+                let new_err = RedefaulterError::FailedSettingsLoad { human_span, reason };
 
-        let endpoints = AudioNightmare::build(Some(event_proxy), Some(&settings.platform))?;
+                settings_load_failed_popup(new_err);
+            }
+            Err(e) => {
+                error!("Settings load failed: {e}");
+                settings_load_failed_popup(e);
+            }
+        };
+
+        let endpoints = AudioNightmare::build(Some(event_proxy.clone()), Some(&settings.platform))?;
 
         // let config_defaults = settings.platform.default_devices.clone();
 
         let current_defaults = endpoints.get_current_defaults()?;
 
+        let mut profiles = Profiles::build(processes)?;
+
+        if let Err(e) = profiles.load_from_default_dir() {
+            crate::popups::profile_load_failed_popup(e, event_proxy.clone());
+        };
+
         Ok(Self {
             endpoints,
-            profiles: Profiles::build(processes)?,
+            profiles,
             process_watcher_handle: Takeable::new(process_watcher_handle),
             // config_defaults,
             current_defaults,
+            event_proxy,
             settings,
             config_path,
             tray_menu: None,
@@ -112,10 +141,9 @@ impl App {
     ///
     /// Starting from the lowest priority, lays all of their desired devices
     /// on top of each other, discarding any devices that aren't connected to the system.
-    pub fn get_damaged_devices(
-        &self,
-        only_config_default: bool, // active_profiles: Vec<&DeviceSet<ConfigEntry>>,
-    ) -> Option<DeviceSet<Discovered>> {
+    ///
+    /// Returns None if the resulting devices are the same as the current de.
+    pub fn get_damaged_devices(&self, only_config_default: bool) -> Option<DeviceSet<Discovered>> {
         let config_default_once = std::iter::once(&self.settings.platform.default_devices);
 
         let active_overrides = self
@@ -186,9 +214,16 @@ impl App {
             ExitRequested => {
                 *control_flow = ControlFlow::Exit;
             }
+            ReloadProfiles => {
+                debug!("Reload Profiles event recieved!");
+                self.reload_profiles()?;
+            }
         }
         Ok(())
     }
+    // pub fn event_proxy(&self) -> EventLoopProxy<CustomEvent> {
+    //     self.event_proxy.clone()
+    // }
     pub fn update_defaults(&mut self) -> AppResult<()> {
         debug!("Updating defaults!");
         self.current_defaults = self.endpoints.get_current_defaults()?;
@@ -207,8 +242,12 @@ impl App {
         }
         Ok(())
     }
+    /// If deserializing a profile fails, the previous profiles are kept as-is in memory.
     pub fn reload_profiles(&mut self) -> AppResult<()> {
-        self.profiles.load_from_default_dir()?;
+        if let Err(e) = self.profiles.load_from_default_dir() {
+            crate::popups::profile_load_failed_popup(e, self.event_proxy.clone());
+            return Ok(());
+        };
         self.update_active_profiles(false)?;
         self.change_devices_if_needed()?;
         Ok(())

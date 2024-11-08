@@ -1,5 +1,7 @@
 // use color_eyre::Result;
 
+use std::ffi::OsString;
+
 pub type AppResult<T> = Result<T, RedefaulterError>;
 
 #[derive(Debug, thiserror::Error)]
@@ -35,6 +37,14 @@ pub enum RedefaulterError {
     DeviceNotFound(String),
     #[error("Profile not found: {0}")]
     ProfileNotFound(String),
+    #[error("Failed to load profile {filename:?}\n{human_span}\n{reason}")]
+    FailedProfileLoad {
+        filename: OsString,
+        human_span: String,
+        reason: String,
+    },
+    #[error("Failed to load settings!\n{human_span}\n{reason}")]
+    FailedSettingsLoad { human_span: String, reason: String },
     #[error("Failed to get active processes")]
     FailedToGetProcesses,
     #[error("Failed to get working directory")]

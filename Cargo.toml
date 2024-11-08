@@ -45,6 +45,7 @@ opener = { version = "0.7.2", features = ["reveal"] }
 muda = "0.15.2"
 serde_plain = "1.0.2"
 derivative = "2.2.0"
+win-msgbox = "0.2.1"
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [dependencies.windows]

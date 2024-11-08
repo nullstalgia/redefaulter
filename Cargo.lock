@@ -2336,6 +2336,7 @@ dependencies = [
  "tracing-subscriber",
  "tray-icon",
  "wasapi",
+ "win-msgbox",
  "windows 0.57.0",
  "windows-core 0.57.0",
  "windows-result 0.2.0",
@@ -3154,6 +3155,15 @@ name = "widestring"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7219d36b6eac893fa81e84ebe06485e7dcbb616177469b142df14f1f4deb1311"
+
+[[package]]
+name = "win-msgbox"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b293d082c6da3f8e9f58a9d2fb076a61737b8f752fb559550a0a864ccfa2bd8"
+dependencies = [
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "winapi"

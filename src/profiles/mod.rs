@@ -44,12 +44,6 @@ impl Profiles {
             processes,
         };
 
-        if dir.exists() {
-            profiles.load_from_default_dir()?;
-        } else {
-            fs::create_dir(dir)?;
-        }
-
         Ok(profiles)
     }
     /// Will replace all existing profiles if successful.
@@ -185,6 +179,15 @@ impl From<DeviceSet<ConfigEntry>> for AppOverride {
 /// Deserializes toml config into an [AppOverride]
 fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
     let file_name = path.file_stem().expect("File has no name?").to_owned();
-    let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?)?;
+    let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?).map_err(|e| {
+        let err_str = e.to_string();
+        let human_span = err_str.lines().next().unwrap_or("").to_owned();
+        let reason = e.message().to_owned();
+        RedefaulterError::FailedProfileLoad {
+            filename: file_name.clone(),
+            human_span,
+            reason,
+        }
+    })?;
     Ok((file_name, profile))
 }
