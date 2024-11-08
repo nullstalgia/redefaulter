@@ -43,6 +43,8 @@ pub enum RedefaulterError {
         human_span: String,
         reason: String,
     },
+    #[error("Profile's watched executable path can't be empty!\nProfile: {0:?}")]
+    ProfileEmptyProcessPath(OsString),
     #[error("Failed to load settings!\n{human_span}\n{reason}")]
     FailedSettingsLoad { human_span: String, reason: String },
     #[error("Failed to get active processes")]

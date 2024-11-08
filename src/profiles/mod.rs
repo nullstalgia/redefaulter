@@ -188,5 +188,10 @@ fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
             reason,
         }
     })?;
+    // Dead simple validation
+    // Consider Keats/validator if I need more.
+    if profile.process_path.as_os_str().is_empty() {
+        return Err(RedefaulterError::ProfileEmptyProcessPath(file_name));
+    }
     Ok((file_name, profile))
 }
