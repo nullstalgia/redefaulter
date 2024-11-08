@@ -86,6 +86,12 @@ Any instance of an application, matching the given full path:
 process_path = "C:/Program Files (x86)/Steam/steam.exe"
 ```
 
+If you just want to stack sets of desired devices regardless of running apps, you can set the process path to a single `*`, and it will always be active and follow the same priority rules.
+
+```toml
+process_path = "*"
+```
+
 ### Warning for system executables!
 
 Windows will not always properly report the process' path, however.

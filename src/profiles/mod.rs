@@ -119,13 +119,16 @@ impl Profiles {
     /// Returns `true` if there was a change in active profiles.
     ///
     /// Only need to call this when processes change, not audio endpoints.
-    pub fn update_active_profiles(
-        &mut self,
-        // processes: &DashMap<u32, Process>,
-        force_update: bool,
-    ) -> AppResult<bool> {
-        let mut active_profiles: BTreeSet<&OsString> = BTreeSet::new();
+    pub fn update_active_profiles(&mut self, force_update: bool) -> AppResult<bool> {
+        let mut active_profiles = BTreeSet::new();
         let total_profiles = self.inner.len();
+        // Checking for wildcard ("*"-only) profiles
+        for (profile_name, profile) in self.inner.iter() {
+            if profile.process_path == *WILDCARD_ANY_PROCESS {
+                active_profiles.insert(profile_name);
+            }
+        }
+
         for process in self.processes.iter() {
             if active_profiles.len() == total_profiles {
                 break;
@@ -140,8 +143,6 @@ impl Profiles {
                 }
             }
         }
-
-        // self.active = active_profiles;
 
         let new_profiles = active_profiles;
         let length_changed = new_profiles.len() != self.active.len();
