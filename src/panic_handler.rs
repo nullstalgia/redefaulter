@@ -63,7 +63,7 @@ pub fn initialize_ctrl_c_handler(proxy: EventLoopProxy<CustomEvent>) -> Result<(
             let _ = proxy.send_event(CustomEvent::ExitRequested);
         } else {
             warn!("Forcibly exiting via Ctrl+C!");
-            std::process::exit(0);
+            std::process::exit(libc::EXIT_FAILURE);
         }
     })?;
     Ok(())

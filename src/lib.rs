@@ -17,9 +17,8 @@ use app::{App, CustomEvent};
 use args::TopLevelCmd;
 use errors::RedefaulterError;
 use platform::AudioNightmare;
+use popups::fatal_error_popup;
 use std::path::PathBuf;
-use std::time::Instant;
-use tao::event::StartCause;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
@@ -30,10 +29,7 @@ use tracing::*;
 use tracing_subscriber::{filter, prelude::*};
 use tracing_subscriber::{fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt};
 
-use tao::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder},
-};
+use tao::event_loop::EventLoopBuilder;
 
 pub fn run(args: TopLevelCmd) -> Result<()> {
     panic_handler::initialize_panic_handler()?;
@@ -106,7 +102,11 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
 
     info!("Starting app... v{}", env!("CARGO_PKG_VERSION"));
 
-    let mut app = App::build(event_proxy)?;
+    // Might need to catch more than just App::build's errors, but this is good enough for now.
+    let mut app = match App::build(event_proxy) {
+        Ok(app) => app,
+        Err(e) => fatal_error_popup(e),
+    };
 
     let menu_channel = MenuEvent::receiver();
     let tray_channel = TrayIconEvent::receiver();
@@ -114,71 +114,14 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     reload_handle_file.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
     reload_handle_stdout.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
 
-    // TODO handle unwraps properly
-    // TODO Move this handler into `app` maybe?
     event_loop.run(move |event, _, control_flow| {
-        if app.process_watcher_handle.is_finished() {
-            let result = app.process_watcher_handle.take().join();
-            panic!("Process watcher has closed! {:#?}", result);
-        }
-        match event {
-            Event::NewEvents(StartCause::Init) => {
-                *control_flow = ControlFlow::Wait;
-                app.tray_menu = Some(app.build_tray_late().unwrap());
-                app.update_active_profiles(true).unwrap();
-                app.change_devices_if_needed().unwrap();
-            }
-            Event::UserEvent(event) => {
-                // println!("user event: {event:?}");
-                let t = Instant::now();
-                if let Err(e) = app.handle_custom_event(event, control_flow) {
-                    error!("Error in event loop, closing. {e}");
-                    *control_flow = ControlFlow::ExitWithCode(1);
-                };
-                debug!("Event handling took {:?}", t.elapsed());
-            }
-            // Timeout for an audio device reaction finished waiting
-            // (nothing else right now uses WaitUntil)
-            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-                debug!("Done waiting for audio endpoint timeout!");
-                app.update_defaults().unwrap();
-                app.change_devices_if_needed().unwrap();
-                app.update_tray_menu().unwrap();
-                *control_flow = ControlFlow::Wait;
-            }
-            Event::NewEvents(StartCause::WaitCancelled {
-                requested_resume, ..
-            }) => {
-                // We had a wait time, but something else came in before we could finish waiting,
-                // so just check now
-                if requested_resume.is_some() {
-                    app.update_defaults().unwrap();
-                    app.update_tray_menu().unwrap();
-                    *control_flow = ControlFlow::Wait;
-                }
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
-            Event::LoopDestroyed => {
-                debug!("Event loop destroyed!");
-                app.kill_tray_menu();
-                app.back_to_default()
-                    .expect("Failed to return devices to default!");
-            }
-            _ => (),
-        }
-        if let Ok(event) = menu_channel.try_recv() {
-            debug!("Menu Event: {event:?}");
-            let t = Instant::now();
-            app.handle_tray_menu_event(event, control_flow).unwrap();
-            debug!("Tray event handling took {:?}", t.elapsed());
-        }
-
-        if let Ok(_event) = tray_channel.try_recv() {
-            // debug!("Tray Event: {event:?}");
-        }
+        if let Err(e) = app.handle_tao_event(event, control_flow, menu_channel, tray_channel) {
+            error!("Fatal error! {e}");
+            // If we get an error, try to gracefully hide the tray icon and go back to normal default devices.
+            _ = app.kill_tray_menu();
+            _ = app.back_to_default();
+            fatal_error_popup(e);
+        };
     });
 }
 

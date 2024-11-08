@@ -37,8 +37,7 @@ pub const PROFILES_PATH: &str = "profiles";
 
 impl Profiles {
     pub fn build(processes: Arc<DashMap<u32, Process>>) -> AppResult<Self> {
-        let dir = PathBuf::from(PROFILES_PATH);
-        let mut profiles = Profiles {
+        let profiles = Profiles {
             inner: BTreeMap::new(),
             active: BTreeSet::new(),
             processes,

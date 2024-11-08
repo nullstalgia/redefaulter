@@ -9,10 +9,14 @@ use std::{
 };
 
 use dashmap::DashMap;
+use muda::MenuEventReceiver;
 use takeable::Takeable;
-use tao::event_loop::{ControlFlow, EventLoopProxy};
+use tao::{
+    event::{Event, StartCause, WindowEvent},
+    event_loop::{ControlFlow, EventLoopProxy},
+};
 use tracing::*;
-use tray_icon::TrayIcon;
+use tray_icon::{TrayIcon, TrayIconEventReceiver};
 
 use crate::{
     errors::{AppResult, RedefaulterError},
@@ -179,6 +183,75 @@ impl App {
         if profiles_changed {
             self.update_tray_menu()?;
         }
+        Ok(())
+    }
+    pub fn handle_tao_event(
+        &mut self,
+        event: Event<CustomEvent>,
+        control_flow: &mut ControlFlow,
+        menu_channel: &MenuEventReceiver,
+        tray_channel: &TrayIconEventReceiver,
+    ) -> AppResult<()> {
+        if self.process_watcher_handle.is_finished() {
+            let result = self.process_watcher_handle.take().join();
+            panic!("Process watcher has closed! {:#?}", result);
+        }
+        match event {
+            Event::NewEvents(StartCause::Init) => {
+                *control_flow = ControlFlow::Wait;
+                self.tray_menu = Some(self.build_tray_late()?);
+                self.update_active_profiles(true)?;
+                self.change_devices_if_needed()?;
+            }
+            Event::UserEvent(event) => {
+                // println!("user event: {event:?}");
+                let t = Instant::now();
+                self.handle_custom_event(event, control_flow)?;
+                debug!("Event handling took {:?}", t.elapsed());
+            }
+            // Timeout for an audio device reaction finished waiting
+            // (nothing else right now uses WaitUntil)
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                debug!("Done waiting for audio endpoint timeout!");
+                self.update_defaults()?;
+                self.change_devices_if_needed()?;
+                self.update_tray_menu()?;
+                *control_flow = ControlFlow::Wait;
+            }
+            Event::NewEvents(StartCause::WaitCancelled {
+                requested_resume, ..
+            }) => {
+                // We had a wait time, but something else came in before we could finish waiting,
+                // so just check now
+                if requested_resume.is_some() {
+                    self.update_defaults()?;
+                    self.update_tray_menu()?;
+                    *control_flow = ControlFlow::Wait;
+                }
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            Event::LoopDestroyed => {
+                debug!("Event loop destroyed!");
+                self.kill_tray_menu();
+                self.back_to_default()
+                    .expect("Failed to return devices to default!");
+            }
+            _ => (),
+        }
+        if let Ok(event) = menu_channel.try_recv() {
+            debug!("Menu Event: {event:?}");
+            let t = Instant::now();
+            self.handle_tray_menu_event(event, control_flow)?;
+            debug!("Tray event handling took {:?}", t.elapsed());
+        }
+
+        if let Ok(_event) = tray_channel.try_recv() {
+            // debug!("Tray Event: {event:?}");
+        }
+
         Ok(())
     }
     /// Handle our defined `CustomEvent`s coming in from the platform and our tasks
