@@ -53,8 +53,8 @@ pub enum RedefaulterError {
     ProcessUpdate,
     #[error("Event loop closed")]
     EventLoopClosed,
-    #[error("An instance of the application is already open")]
-    AlreadyExists,
+    #[error("An instance of the application is already open!")]
+    AlreadyRunning,
     #[error("Failed to parse tray menu ID: {0}")]
     TrayMenuIdParse(String),
 }

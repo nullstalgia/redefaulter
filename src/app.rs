@@ -80,7 +80,7 @@ impl App {
             })?;
 
         if instance_already_exists {
-            return Err(RedefaulterError::AlreadyExists);
+            return Err(RedefaulterError::AlreadyRunning);
         }
 
         assert_eq!(initial_size, processes.len());
