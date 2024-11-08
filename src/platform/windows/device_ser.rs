@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::WindowsAudioDevice;
@@ -30,11 +28,7 @@ impl<'de, State> Deserialize<'de> for WindowsAudioDevice<State> {
             _ => (String::new(), String::new()),
         };
 
-        Ok(WindowsAudioDevice {
-            human_name,
-            guid,
-            _state: PhantomData,
-        })
+        Ok(WindowsAudioDevice::new(human_name, guid))
     }
 }
 
