@@ -451,7 +451,6 @@ impl AudioNightmare {
             .device_by_guid(&role.into(), guid)
             .ok_or_else(|| RedefaulterError::DeviceNotFound(guid.to_string()))?;
 
-        // Clear before modifying
         let new_device = self.device_to_config_entry(real_device, make_fuzzy_name);
         entry.update_role(role, new_device);
 
@@ -483,15 +482,17 @@ impl AudioNightmare {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, MenuToggle, MenuId, TrayChecks)]
 pub struct PlatformSettings {
-    #[menuid(rename = "unify")]
     /// Unify Communications Devices
     ///
     /// When true, all communications entries are ignored. Any higher priority profile entries that change only communications device will be ignored.
     ///
     /// TODO: Make this work on its own when there's not a given set of devices?
+    #[menuid(rename = "unify")]
+    #[serde(default)]
     pub unify_communications_devices: bool,
-    #[serde(rename = "default")]
     #[menuid(skip)]
+    #[serde(default)]
+    #[serde(rename = "default")]
     pub default_devices: DeviceSet<ConfigEntry>,
 }
 

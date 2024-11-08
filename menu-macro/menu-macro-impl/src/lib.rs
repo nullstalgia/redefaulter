@@ -117,12 +117,10 @@ pub fn menu_toggle_derive(input: TokenStream) -> TokenStream {
             let struct_event_handle_doc = "Flips the associated bool of the given menu ID";
             let struct_match_method = quote! {
                 #[doc = #struct_event_handle_doc]
-                pub fn handle_menu_toggle_event(&mut self, id: &str) -> Result<(), MenuMacroError> {
-                    use menu_macro::MenuMacroError;
-                    // stringify!(#struct_root)
+                pub fn handle_menu_toggle_event(&mut self, id: &str) -> Result<(), menu_macro::MenuMacroError> {
                     match id {
                         #(#matches)*
-                        _ => Err(MenuMacroError::FieldNotFound(id.to_string())),
+                        _ => Err(menu_macro::MenuMacroError::FieldNotFound(id.to_string())),
                     }
                 }
             };

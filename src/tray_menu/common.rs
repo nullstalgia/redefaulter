@@ -48,7 +48,7 @@ impl App {
 
         let initial_tooltip = format!("{} - Initializing", TOOLTIP_PREFIX);
 
-        append_root(&menu)?;
+        self.append_root(&menu)?;
 
         // We create the icon late (once the event loop is actually running)
         // to prevent issues like https://github.com/tauri-apps/tray-icon/issues/90
@@ -82,12 +82,6 @@ impl App {
         // submenu for each device role
         // hide communications role if unify enabled
         // section for editing active profiles
-
-        let settings_submenu = self.build_tray_settings_submenu()?;
-
-        menu.append(&settings_submenu)?;
-
-        menu.append(&PredefinedMenuItem::separator())?;
 
         let total_profiles = self.profiles.len();
 
@@ -146,7 +140,7 @@ impl App {
             .collect::<Vec<_>>();
         menu.append_items(&submenu_refs)?;
 
-        append_root(&menu)?;
+        self.append_root(&menu)?;
 
         Ok(menu)
     }
@@ -163,6 +157,15 @@ impl App {
                 &self
                     .settings
                     .platform
+                    .build_check_menu_items()
+                    .iter()
+                    .map(|item| item as &dyn IsMenuItem)
+                    .collect::<Vec<_>>(),
+            )
+            .items(
+                &self
+                    .settings
+                    .behavior
                     .build_check_menu_items()
                     .iter()
                     .map(|item| item as &dyn IsMenuItem)
@@ -193,9 +196,14 @@ impl App {
                 self.settings.platform.handle_menu_toggle_event(id)?;
                 self.settings.save(&self.config_path)?;
                 self.endpoints.update_config(&self.settings.platform);
-                // rebuild menu
                 self.update_tray_menu()?;
-                debug!("{:#?}", self.settings.platform);
+                // debug!("{:#?}", self.settings.platform);
+            }
+            _ if id.starts_with(self.settings.behavior.menu_id_root()) => {
+                self.settings.behavior.handle_menu_toggle_event(id)?;
+                self.settings.save(&self.config_path)?;
+                self.update_tray_menu()?;
+                // debug!("{:#?}", self.settings.behavior);
             }
             IGNORE_ID => {
                 self.update_tray_menu()?;
@@ -230,8 +238,12 @@ impl App {
 
         match &tray_device.guid {
             Some(guid) => {
-                self.endpoints
-                    .update_config_entry(set_to_modify, &tray_device.role, guid, true)?;
+                self.endpoints.update_config_entry(
+                    set_to_modify,
+                    &tray_device.role,
+                    guid,
+                    self.settings.behavior.always_save_generics,
+                )?;
             }
             None => set_to_modify.clear_role(&tray_device.role),
         }
@@ -251,23 +263,26 @@ impl App {
 
         Ok(())
     }
+
+    fn append_root(&self, menu: &Menu) -> AppResult<()> {
+        let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
+        let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
+        let settings_submenu = self.build_tray_settings_submenu()?;
+        let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
+
+        menu.append_items(&[
+            &PredefinedMenuItem::separator(),
+            &reload,
+            &reveal,
+            &PredefinedMenuItem::separator(),
+            &settings_submenu,
+            &PredefinedMenuItem::separator(),
+            &quit,
+        ])?;
+
+        Ok(())
+    }
 }
-
-fn append_root(menu: &Menu) -> AppResult<()> {
-    let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
-    let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
-    let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
-    menu.append_items(&[
-        &PredefinedMenuItem::separator(),
-        &reload,
-        &reveal,
-        &PredefinedMenuItem::separator(),
-        &quit,
-    ])?;
-
-    Ok(())
-}
-
 pub fn build_device_checks(
     devices: &BTreeMap<String, DiscoveredDevice>,
     selection_type: &DeviceSelectionType,

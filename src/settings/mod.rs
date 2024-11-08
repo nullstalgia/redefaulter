@@ -2,7 +2,9 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::str::FromStr;
 
+use derivative::Derivative;
 use fs_err::File;
+use menu_macro::{MenuId, MenuToggle, TrayChecks};
 use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
 use tracing::*;
@@ -10,26 +12,40 @@ use tracing::*;
 use crate::errors::AppResult;
 use crate::platform::PlatformSettings;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+// TODO Proper defaults.
+
+#[derive(Debug, Clone, Serialize, Deserialize, MenuToggle, MenuId, TrayChecks, Derivative)]
+#[derivative(Default)]
 pub struct BehaviorSettings {
+    /// Always Save Generics
+    ///
+    /// When true, selecting a device in the tray menu will always save
+    /// the most generic version of that device.
+    ///
+    /// For example, on Windows, instead of saving "Speakers (3- Gaming Headset)~{0.0.0.00000000}.{aa-bb-cc-123-456}"
+    ///
+    /// It would save "Speakers (Gaming Headset)", ignoring the Windows-appended numeric identifier, and not
+    /// saving the GUID.
+    #[derivative(Default(value = "true"))]
     #[serde(default)]
     pub always_save_generics: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Default)]
 pub struct MiscSettings {
-    #[serde(default)]
+    #[derivative(Default(value = "String::from(\"debug\")"))]
     pub log_level: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
-    pub redefaulter: BehaviorSettings,
+    pub behavior: BehaviorSettings,
     #[serde(default)]
     pub misc: MiscSettings,
-    #[serde(default)]
     #[serde(rename = "devices")]
+    #[serde(default)]
     pub platform: PlatformSettings,
     // pub updates: AutoUpdateSettings
 }
