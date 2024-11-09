@@ -3,7 +3,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use derivative::Derivative;
-use fs_err::File;
+use fs_err::{self as fs};
 use menu_macro::{MenuId, MenuToggle, TrayChecks};
 use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
@@ -60,7 +60,7 @@ impl Settings {
             // TODO Make an actual error
             panic!();
         }
-        let mut file = File::open(path)?;
+        let mut file = fs::File::open(path)?;
         let mut buffer = String::new();
         file.read_to_string(&mut buffer)?;
         drop(file);
@@ -72,7 +72,7 @@ impl Settings {
         // TODO Look into toml_edit's options
         let toml_config = toml::to_string(self)?;
         info!("Serialized config length: {}", toml_config.len());
-        let mut file = File::create(config_path)?;
+        let mut file = fs::File::create(config_path)?;
         file.write_all(toml_config.as_bytes())?;
         file.flush()?;
         file.sync_all()?;

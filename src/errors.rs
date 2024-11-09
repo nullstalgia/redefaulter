@@ -49,6 +49,8 @@ pub enum RedefaulterError {
     FailedSettingsLoad { human_span: String, reason: String },
     #[error("Failed to get active processes")]
     FailedToGetProcesses,
+    #[error("Failed to read lockfile")]
+    FailedParseLockFile,
     #[error("Failed to get working directory")]
     WorkDir,
     #[error("Could not trigger process updated event")]

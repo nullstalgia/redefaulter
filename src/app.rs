@@ -22,7 +22,7 @@ use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
     popups::settings_load_failed_popup,
-    processes,
+    processes::{self, LockFile},
     profiles::Profiles,
     settings::Settings,
 };
@@ -54,6 +54,9 @@ pub struct App {
 
     pub event_proxy: EventLoopProxy<CustomEvent>,
 
+    pub lock_file: Takeable<LockFile>,
+
+    // pub lock_file_path: PathBuf,
     pub settings: Settings,
     pub config_path: PathBuf,
     // To prevent fighting with something else messing with devices
@@ -74,21 +77,20 @@ impl App {
             processes::process_event_loop(map_clone, process_tx, proxy_clone)
         });
 
-        let (initial_size, instance_already_exists) = process_rx
-            .recv_timeout(Duration::from_secs(3))
-            .map_err(|e| match e {
-                mpsc::RecvTimeoutError::Timeout => RedefaulterError::FailedToGetProcesses,
-                mpsc::RecvTimeoutError::Disconnected => {
-                    panic!("Process watcher was disconnected before sending!")
-                }
-            })?;
+        let (initial_size, lock_file) =
+            process_rx
+                .recv_timeout(Duration::from_secs(3))
+                .map_err(|e| match e {
+                    mpsc::RecvTimeoutError::Timeout => RedefaulterError::FailedToGetProcesses,
+                    mpsc::RecvTimeoutError::Disconnected => RedefaulterError::FailedToGetProcesses,
+                })?;
 
-        if instance_already_exists {
-            return Err(RedefaulterError::AlreadyRunning);
-        }
+        let lock_file = match lock_file {
+            Some(file) => file,
+            None => return Err(RedefaulterError::AlreadyRunning),
+        };
 
         assert_eq!(initial_size, processes.len());
-
         let exe_path = std::env::current_exe()?;
         let config_name = exe_path.with_extension("toml");
         let config_name = config_name
@@ -109,11 +111,11 @@ impl App {
                 let reason = e.message().to_owned();
                 let new_err = RedefaulterError::FailedSettingsLoad { human_span, reason };
 
-                settings_load_failed_popup(new_err);
+                settings_load_failed_popup(new_err, lock_file);
             }
             Err(e) => {
                 error!("Settings load failed: {e}");
-                settings_load_failed_popup(e);
+                settings_load_failed_popup(e, lock_file);
             }
         };
 
@@ -138,6 +140,8 @@ impl App {
             event_proxy,
             settings,
             config_path,
+            lock_file: Takeable::new(lock_file),
+            // lock_file_path,
             tray_menu: None,
         })
     }
@@ -159,8 +163,8 @@ impl App {
             .chain(config_default_once)
             .rev();
 
-        // TODO Consider a DeviceActions type with Options on the Strings
-        let mut device_actions = DeviceSet::<Discovered>::default();
+        // TODO Consider a DeviceActions type with Options on the Strings/Devices?
+        let mut device_actions = self.current_defaults.clone();
 
         for profile in active_overrides {
             self.endpoints
@@ -238,6 +242,7 @@ impl App {
                 self.kill_tray_menu();
                 self.back_to_default()
                     .expect("Failed to return devices to default!");
+                self.lock_file.take();
             }
             _ => (),
         }

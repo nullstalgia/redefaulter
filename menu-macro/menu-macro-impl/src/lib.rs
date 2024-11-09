@@ -4,8 +4,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Ident, LitStr};
 
-// TODO: More methods?
-// Make cleaner
+// TODO: Maybe combine into one macro?
 
 #[proc_macro_derive(TrayChecks, attributes(menuid))]
 pub fn tray_checkboxes_derive(input: TokenStream) -> TokenStream {

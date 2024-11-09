@@ -16,8 +16,10 @@ pub mod errors;
 use app::{App, CustomEvent};
 use args::TopLevelCmd;
 use errors::RedefaulterError;
+use fs_err::{self as fs};
 use platform::AudioNightmare;
 use popups::fatal_error_popup;
+
 use std::path::PathBuf;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
@@ -36,7 +38,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     let ansi_support = enable_ansi_support::enable_ansi_support().is_ok();
     let working_directory = determine_working_directory().ok_or(RedefaulterError::WorkDir)?;
     if !working_directory.exists() {
-        fs_err::create_dir(&working_directory)?;
+        fs::create_dir(&working_directory)?;
     }
     std::env::set_current_dir(&working_directory).expect("Failed to change working directory");
     let log_name = std::env::current_exe()?
@@ -81,8 +83,6 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         .with(fmt_layer_stdout)
         .init();
 
-    // TODO Profile-less to just do Comms unification
-
     // TODO Command to print running process the way WMI sees them?
     if let Some(subcommand) = args.subcommand {
         match subcommand {
@@ -105,7 +105,10 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
     // Might need to catch more than just App::build's errors, but this is good enough for now.
     let mut app = match App::build(event_proxy) {
         Ok(app) => app,
-        Err(e) => fatal_error_popup(e),
+        Err(e) => {
+            error!("Failed to build App: {e}");
+            fatal_error_popup(e, None);
+        }
     };
 
     let menu_channel = MenuEvent::receiver();
@@ -120,7 +123,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
             // If we get an error, try to gracefully hide the tray icon and go back to normal default devices.
             _ = app.kill_tray_menu();
             _ = app.back_to_default();
-            fatal_error_popup(e);
+            fatal_error_popup(e, Some(app.lock_file.take()));
         };
     });
 }
