@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
 use tracing::*;
 
-use crate::errors::AppResult;
+use crate::errors::{AppResult, RedefaulterError};
 use crate::platform::PlatformSettings;
 
 // TODO Proper defaults.
@@ -62,8 +62,7 @@ impl Settings {
             default.save(path)?;
             return Ok(default);
         } else if !path.exists() && required {
-            // TODO Make an actual error
-            panic!();
+            return Err(RedefaulterError::RequiredSettingsMissing);
         }
         let mut file = fs::File::open(path)?;
         let mut buffer = String::new();

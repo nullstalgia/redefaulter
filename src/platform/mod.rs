@@ -16,11 +16,11 @@ use serde::{Deserialize, Serialize};
 // pub use unix::AudioNightmare;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-/// A device tagged with this could either be connected or not, and thus
+/// A device tagged with this could be unreachable, and thus
 /// needs to be checked before setting any role to it.
 pub struct ConfigEntry;
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
-/// A device tagged with this is known to be connected and not disabled
+#[derive(Debug, Clone)]
+/// A device tagged with this is known to be connected and available
 pub struct Discovered;
 
 pub trait AudioDevice {

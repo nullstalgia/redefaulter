@@ -12,7 +12,7 @@ use crate::{
 impl App {
     // Helpful for diagnostics but looks kinda ugly due to how long the device names are,
     // so I'm just gonna keep it off by default.
-    pub fn tray_active_devices(&self) -> AppResult<Vec<Box<dyn IsMenuItem>>> {
+    pub fn tray_platform_active_devices(&self) -> AppResult<Vec<Box<dyn IsMenuItem>>> {
         let mut devices: Vec<Box<dyn IsMenuItem>> = Vec::new();
         use DeviceRole::*;
 

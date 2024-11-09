@@ -31,8 +31,6 @@ pub struct Profiles {
     processes: Arc<DashMap<u32, Process>>,
 }
 
-pub static WILDCARD_ANY_PROCESS: LazyLock<&Path> = LazyLock::new(|| Path::new("*"));
-
 pub const PROFILES_PATH: &str = "profiles";
 
 impl Profiles {
@@ -116,8 +114,9 @@ impl Profiles {
         let mut active_profiles = BTreeSet::new();
         let total_profiles = self.inner.len();
         // Checking for wildcard ("*"-only) profiles
+        let wildcard_any_process = Path::new("*");
         for (profile_name, profile) in self.inner.iter() {
-            if profile.process_path == *WILDCARD_ANY_PROCESS {
+            if profile.process_path == wildcard_any_process {
                 active_profiles.insert(profile_name);
             }
         }
@@ -182,7 +181,7 @@ fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
         let err_str = e.to_string();
         let human_span = err_str.lines().next().unwrap_or("").to_owned();
         let reason = e.message().to_owned();
-        RedefaulterError::FailedProfileLoad {
+        RedefaulterError::ProfileLoad {
             filename: file_name.clone(),
             human_span,
             reason,

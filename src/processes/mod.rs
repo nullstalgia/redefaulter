@@ -13,7 +13,7 @@ use tracing::*;
 use wmi::*;
 
 // Inspired by https://users.rust-lang.org/t/watch-for-windows-process-creation-in-rust/98603/2
-// But this could be better abstracted later to allow for Windows+Unix operation
+// But this could be better abstracted later to allow for Windows+Unix operation (TODO)
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -110,7 +110,7 @@ pub fn process_event_loop(
         let pid = contents
             .trim()
             .parse::<u32>()
-            .map_err(|_| RedefaulterError::FailedParseLockFile)?;
+            .map_err(|_| RedefaulterError::ParseLockFile)?;
 
         let already_running = process_map.iter().any(|p| p.process_id == pid);
 

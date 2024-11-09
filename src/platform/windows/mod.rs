@@ -42,8 +42,6 @@ pub struct AudioNightmare {
     policy_config: Takeable<IPolicyConfig>,
     /// Client object for endpoint notifications from Windows
     device_callbacks: Option<NotificationCallbacks>,
-    /// Channel for notifications for audio endpoint events
-    // callback_rx: Receiver<WindowsAudioNotification>,
     /// Existing devices attached to the host
     pub playback_devices: BTreeMap<String, DiscoveredDevice>,
     /// Existing devices attached to the host
@@ -143,22 +141,6 @@ impl AudioNightmare {
             event_proxy,
         })
     }
-    // pub fn print_one_audio_event(&mut self) -> Result<()> {
-    //     let notif = self.callback_rx.recv()?;
-    //     println!("Notification: {:?}", notif);
-    //     Ok(())
-    // }
-    // pub fn event_loop(&mut self) -> Result<()> {
-    //     Ok(())
-    // }
-    // pub fn set_device_test(&mut self) -> AppResult<()> {
-    //     let id = "{0.0.0.00000000}.{1e9628d3-7e6c-4979-80f0-46122c6a8ab6}";
-    //     let id = id.to_wide();
-    //     for role in [eConsole, eMultimedia, eCommunications] {
-    //         unsafe { self.policy_config.SetDefaultEndpoint(id.as_pwstr(), role) }?;
-    //     }
-    //     Ok(())
-    // }
     pub fn set_device_role(&self, device_id: &str, role: &Role) -> AppResult<()> {
         let wide_id = device_id.to_wide();
         unsafe {

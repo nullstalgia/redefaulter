@@ -82,7 +82,7 @@ impl App {
         let menu = Menu::new();
 
         if self.settings.behavior.show_active_devices {
-            let active_devices = self.tray_active_devices()?;
+            let active_devices = self.tray_platform_active_devices()?;
             let item_refs = active_devices
                 .iter()
                 .map(|s| s.as_ref())
@@ -184,6 +184,7 @@ impl App {
 
         Ok(submenu)
     }
+    /// Takes in a raw event from the tray menu, dispatching commands as requested.
     pub fn handle_tray_menu_event(
         &mut self,
         event: MenuEvent,
@@ -233,6 +234,7 @@ impl App {
         }
         Ok(())
     }
+    /// Takes in a deserialized device click event, modifies the specified profile, and saves the relevant file.
     fn handle_tray_device_selection(&mut self, tray_device: TrayDevice) -> AppResult<()> {
         let set_to_modify = match &tray_device.destination {
             DeviceSelectionType::ConfigDefault => {

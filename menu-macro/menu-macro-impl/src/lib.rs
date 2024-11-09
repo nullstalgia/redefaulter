@@ -211,7 +211,9 @@ pub fn menu_id_derive(input: TokenStream) -> TokenStream {
 }
 
 struct StructInfo {
+    /// The unmodified name of the struct being operated on
     struct_name: Ident,
+    /// The (potentially-regenerated) root of all IDs output by the methods.
     menu_id_root: Ident,
 }
 
@@ -243,7 +245,7 @@ fn parse_struct_info(input: &DeriveInput) -> StructInfo {
     }
 
     let menu_id_root = if let Some(prefix) = optional_prefix.as_ref() {
-        format_ident!("{prefix}_{root_name}")
+        format_ident!("{prefix}{root_name}")
     } else {
         root_name
     };
@@ -254,11 +256,19 @@ fn parse_struct_info(input: &DeriveInput) -> StructInfo {
     }
 }
 
+/// Generated for each named field of the given struct
 struct ProcessedField {
+    /// The field's unmodified name
     original_ident: Ident,
+    /// The Display-like name for the field, generated from the first doc comment line for it
+    ///
+    /// If no comment exists, uses output_menu_id.
     field_human_name: String,
+    /// Name of method to call to get generated menu id
     id_method_name: Ident,
+    /// Documentation output for the generated method
     doc_string: String,
+    /// The generated id for the field's method
     output_menu_id: Ident,
 }
 
@@ -308,8 +318,6 @@ fn process_fields(
 
             let output_menu_id = format_ident!("{struct_root}_{field_id}");
 
-            // let field_human_name = ;
-
             let (doc_string, field_human_name) = {
                 if let Some(human_name) = get_first_doc_comment(&field.attrs) {
                     (format!("{human_name}\n\nReturns: `{output_menu_id}`"), human_name)
@@ -341,12 +349,6 @@ fn get_first_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
                         let comment: String = lit_str.value().trim().to_owned();
                         output = Some(comment);
                     }
-                    // if let syn::Expr::Lit(syn::ExprLit { ref lit, .. }) = meta_name_value.value {
-                    //     if let syn::Lit::Str(ref lit_str) = lit {
-                    //         let comment: String = lit_str.value().trim().to_owned();
-                    //         output = Some(comment);
-                    //     }
-                    // }
                     break;
                 }
                 if let syn::Expr::Lit(syn::ExprLit {

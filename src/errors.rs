@@ -38,7 +38,7 @@ pub enum RedefaulterError {
     #[error("Profile not found: {0}")]
     ProfileNotFound(String),
     #[error("Failed to load profile {filename:?}\n{human_span}\n{reason}")]
-    FailedProfileLoad {
+    ProfileLoad {
         filename: OsString,
         human_span: String,
         reason: String,
@@ -46,11 +46,15 @@ pub enum RedefaulterError {
     #[error("Profile's watched executable path can't be empty!\nProfile: {0:?}")]
     ProfileEmptyProcessPath(OsString),
     #[error("Failed to load settings!\n{human_span}\n{reason}")]
-    FailedSettingsLoad { human_span: String, reason: String },
-    #[error("Failed to get active processes")]
-    FailedToGetProcesses,
+    SettingsLoad { human_span: String, reason: String },
+    #[error("Settings file missing, not creating because marked required")]
+    RequiredSettingsMissing,
+    #[error("Process watcher failed setup: {0}")]
+    ProcessWatcherSetup(String),
+    #[error("Process watcher encountered error: {0}")]
+    ProcessWatcher(String),
     #[error("Failed to read lockfile")]
-    FailedParseLockFile,
+    ParseLockFile,
     #[error("Failed to get working directory")]
     WorkDir,
     #[error("Could not trigger process updated event")]

@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        mpsc::{self},
+        mpsc::{self, RecvTimeoutError},
         Arc,
     },
     thread::{self, JoinHandle},
@@ -40,11 +40,6 @@ pub struct App {
     pub endpoints: AudioNightmare,
     pub profiles: Profiles,
     pub process_watcher_handle: Takeable<JoinHandle<AppResult<()>>>,
-    // TODO option for this to be
-    // - on-launch devices
-    // - config'd devices
-    // - never taken into account
-    // pub config_defaults: DeviceSet<ConfigEntry>,
     // TODO move out of App?
     pub current_defaults: DeviceSet<Discovered>,
 
@@ -77,13 +72,17 @@ impl App {
             processes::process_event_loop(map_clone, process_tx, proxy_clone)
         });
 
-        let (initial_size, lock_file) =
-            process_rx
-                .recv_timeout(Duration::from_secs(3))
-                .map_err(|e| match e {
-                    mpsc::RecvTimeoutError::Timeout => RedefaulterError::FailedToGetProcesses,
-                    mpsc::RecvTimeoutError::Disconnected => RedefaulterError::FailedToGetProcesses,
-                })?;
+        let (initial_size, lock_file) = match process_rx.recv_timeout(Duration::from_secs(3)) {
+            Ok((size, file)) => (size, file),
+            Err(RecvTimeoutError::Timeout) => {
+                return Err(RedefaulterError::ProcessWatcherSetup("Timeout".to_string()));
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                let result = process_watcher_handle.join();
+                let output = format!("{result:?}");
+                return Err(RedefaulterError::ProcessWatcherSetup(output));
+            }
+        };
 
         let lock_file = match lock_file {
             Some(file) => file,
@@ -109,7 +108,7 @@ impl App {
                 // (the error's span method is in *bytes*, not lines and columns)
                 let human_span = err_str.lines().next().unwrap_or("").to_owned();
                 let reason = e.message().to_owned();
-                let new_err = RedefaulterError::FailedSettingsLoad { human_span, reason };
+                let new_err = RedefaulterError::SettingsLoad { human_span, reason };
 
                 settings_load_failed_popup(new_err, lock_file);
             }
@@ -171,7 +170,7 @@ impl App {
                 .overlay_available_devices(&mut device_actions, profile);
         }
 
-        // Don't set a device action for a role that's already properly set
+        // Clears device actions for roles that're already properly set
         self.endpoints
             .discard_healthy(&mut device_actions, &self.current_defaults);
 
@@ -198,7 +197,8 @@ impl App {
     ) -> AppResult<()> {
         if self.process_watcher_handle.is_finished() {
             let result = self.process_watcher_handle.take().join();
-            panic!("Process watcher has closed! {:#?}", result);
+            let output = format!("{result:?}");
+            return Err(RedefaulterError::ProcessWatcher(output));
         }
         match event {
             Event::NewEvents(StartCause::Init) => {
@@ -299,9 +299,7 @@ impl App {
         }
         Ok(())
     }
-    // pub fn event_proxy(&self) -> EventLoopProxy<CustomEvent> {
-    //     self.event_proxy.clone()
-    // }
+    /// Query the OS for the current default endpoints.
     pub fn update_defaults(&mut self) -> AppResult<()> {
         debug!("Updating defaults!");
         self.current_defaults = self.endpoints.get_current_defaults()?;
@@ -314,6 +312,8 @@ impl App {
         }
         Ok(())
     }
+    /// Meant to be run on shutdown (via error or user request) to attempt to set the default devices back
+    /// to the global defaults defined in the config.
     pub fn back_to_default(&self) -> AppResult<()> {
         if let Some(actions) = self.get_damaged_devices(true) {
             self.endpoints.change_devices(actions)?;

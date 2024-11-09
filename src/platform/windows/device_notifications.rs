@@ -63,9 +63,6 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
                     },
                 ))
                 .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
-            // self.0
-            //     .send()
-            //     .map_err(|e| to_win_error(e, ERROR_ACCESS_DENIED))?;
         }
 
         Ok(())
