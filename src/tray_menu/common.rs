@@ -81,10 +81,16 @@ impl App {
     pub fn build_tray_contents(&self) -> AppResult<Menu> {
         let menu = Menu::new();
 
-        // settings section
-        // submenu for each device role
-        // hide communications role if unify enabled
-        // section for editing active profiles
+        if self.settings.behavior.show_active_devices {
+            let active_devices = self.tray_active_devices()?;
+            let item_refs = active_devices
+                .iter()
+                .map(|s| s.as_ref())
+                .collect::<Vec<_>>();
+            menu.append_items(&item_refs)?;
+
+            menu.append(&PredefinedMenuItem::separator())?;
+        }
 
         let total_profiles = self.profiles.len();
 

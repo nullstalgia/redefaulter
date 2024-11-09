@@ -459,7 +459,7 @@ impl AudioNightmare {
     // I would prefer this to be a method of the struct,
     // but I don't want to rebuild the regex every invocation.
     // I could possibly make it a static var, but eh.
-    fn device_to_config_entry(
+    pub fn device_to_config_entry(
         &self,
         discovered: &WindowsAudioDevice<Discovered>,
         make_fuzzy_name: bool,

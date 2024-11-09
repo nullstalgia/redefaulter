@@ -1,4 +1,4 @@
-use muda::{Submenu, SubmenuBuilder};
+use muda::{MenuItem, Submenu, SubmenuBuilder};
 use tray_icon::menu::IsMenuItem;
 use wasapi::Direction;
 
@@ -6,10 +6,46 @@ use crate::{
     app::App,
     errors::AppResult,
     platform::{ConfigDevice, ConfigEntry, DeviceRole, DeviceSet},
-    tray_menu::{build_device_checks, DeviceSelectionType},
+    tray_menu::{build_device_checks, common_ids::IGNORE_ID, DeviceSelectionType},
 };
 
 impl App {
+    // Helpful for diagnostics but looks kinda ugly due to how long the device names are,
+    // so I'm just gonna keep it off by default.
+    pub fn tray_active_devices(&self) -> AppResult<Vec<Box<dyn IsMenuItem>>> {
+        let mut devices: Vec<Box<dyn IsMenuItem>> = Vec::new();
+        use DeviceRole::*;
+
+        let header = MenuItem::with_id(IGNORE_ID, "Active Devices:", false, None);
+        devices.push(Box::new(header));
+
+        let build_device = |role: &DeviceRole| -> MenuItem {
+            let device = self.current_defaults.get_role(role);
+            let human_name = &device.human_name;
+            // let human_name = if self.settings.behavior.always_save_generics {
+            //     let config_device = self.endpoints.device_to_config_entry(device, true);
+            //     config_device.human_name.clone()
+            // } else {
+            //     device.human_name.clone()
+            // };
+            let text = format!("{role}: {human_name}");
+            MenuItem::with_id(IGNORE_ID, text, false, None)
+        };
+
+        devices.push(Box::new(build_device(&Playback)));
+
+        if !self.settings.platform.unify_communications_devices {
+            devices.push(Box::new(build_device(&PlaybackComms)));
+        }
+
+        devices.push(Box::new(build_device(&Recording)));
+
+        if !self.settings.platform.unify_communications_devices {
+            devices.push(Box::new(build_device(&RecordingComms)));
+        }
+
+        Ok(devices)
+    }
     pub fn tray_platform_device_selection(
         &self,
         // profile_name_str: &str,

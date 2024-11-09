@@ -29,6 +29,11 @@ pub struct BehaviorSettings {
     #[derivative(Default(value = "true"))]
     #[serde(default)]
     pub always_save_generics: bool,
+    /// Show Active Devices
+    ///
+    /// Just a toggle for showing the current default devices in the tray menu.
+    #[serde(default)]
+    pub show_active_devices: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
