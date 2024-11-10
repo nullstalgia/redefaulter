@@ -3074,6 +3074,7 @@ dependencies = [
 [[package]]
 name = "wasapi"
 version = "0.15.0"
+source = "git+https://github.com/nullstalgia/wasapi-rs?branch=feat/usability-improvements#fda6059973aaf9a7519f15567915154bd4e28511"
 dependencies = [
  "log",
  "num-integer",
