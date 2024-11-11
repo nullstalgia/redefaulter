@@ -3,7 +3,7 @@ name: Build
 # Runs for each commit/PR, but not tag push
 on:
   push:
-    tags-ignore:
+    branches:
       - "**"
   pull_request:
 
