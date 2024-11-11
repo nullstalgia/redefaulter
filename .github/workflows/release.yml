@@ -30,7 +30,7 @@ jobs:
           bin: redefaulter
           # features: portable
           target: ${{ matrix.target }}
-          include: LICENSE,README.md
+          include: LICENSE,README.md,example-profiles
           # tar: unix
           zip: windows
           archive: $bin-$tag-$target
