@@ -21,7 +21,9 @@ pub fn initialize_panic_handler() -> Result<()> {
     eyre_hook.install()?;
     std::panic::set_hook(Box::new(move |panic_info| {
         error!("Panic! {:#?}", panic_info);
+
         let msg = format!("{}", panic_hook.panic_report(panic_info));
+        let non_ansi_msg = strip_ansi_escapes::strip_str(&msg);
         #[cfg(not(debug_assertions))]
         {
             eprintln!("{}", msg); // prints color-eyre stack trace to stderr
@@ -35,7 +37,8 @@ pub fn initialize_panic_handler() -> Result<()> {
 
             info!("Full panic dump at: {:?}", file_path);
         }
-        eprintln!("Error: {}", strip_ansi_escapes::strip_str(msg));
+        eprintln!("Error: {non_ansi_msg}");
+        error!("Report: {non_ansi_msg}");
 
         #[cfg(debug_assertions)]
         {
