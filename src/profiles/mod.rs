@@ -83,9 +83,9 @@ impl Profiles {
     pub fn get_mutable_profile(&mut self, profile_name: &str) -> Option<&mut AppOverride> {
         self.inner.get_mut(OsStr::new(profile_name))
     }
-    pub fn get_profile(&self, profile_name: &str) -> Option<&AppOverride> {
-        self.inner.get(OsStr::new(profile_name))
-    }
+    // pub fn get_profile(&self, profile_name: &str) -> Option<&AppOverride> {
+    //     self.inner.get(OsStr::new(profile_name))
+    // }
     pub fn save_profile(&self, profile_name: &str) -> AppResult<()> {
         let profile_os_str = OsString::from(profile_name);
         let profile = self

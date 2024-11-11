@@ -23,8 +23,8 @@ pub struct ConfigEntry;
 /// A device tagged with this is known to be connected and available
 pub struct Discovered;
 
-pub trait AudioDevice {
-    fn guid(&self) -> &str;
-    fn human_name(&self) -> &str;
-    fn profile_format(&self) -> String;
-}
+// pub trait AudioDevice {
+//     fn guid(&self) -> &str;
+//     fn human_name(&self) -> &str;
+//     fn profile_format(&self) -> String;
+// }

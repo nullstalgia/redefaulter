@@ -5,7 +5,7 @@ use wasapi::Direction;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
-    platform::{AudioDevice, ConfigEntry, Discovered},
+    platform::{ConfigEntry, Discovered},
 };
 
 pub type DiscoveredDevice = WindowsAudioDevice<Discovered>;
@@ -51,19 +51,19 @@ impl<State> WindowsAudioDevice<State> {
 //     }
 // }
 
-impl<State> AudioDevice for WindowsAudioDevice<State> {
-    fn guid(&self) -> &str {
-        self.guid.as_str()
-    }
-    fn human_name(&self) -> &str {
-        self.human_name.as_str()
-    }
-    fn profile_format(&self) -> String {
-        // So I can't use the toml serializer on the raw device since I think it expects a key/value,
-        // but JSON lets me output just the string as is.
-        serde_json::to_string(self).expect("Failed to serialize profile")
-    }
-}
+// impl<State> AudioDevice for WindowsAudioDevice<State> {
+//     fn guid(&self) -> &str {
+//         self.guid.as_str()
+//     }
+//     fn human_name(&self) -> &str {
+//         self.human_name.as_str()
+//     }
+//     fn profile_format(&self) -> String {
+//         // So I can't use the toml serializer on the raw device since I think it expects a key/value,
+//         // but JSON lets me output just the string as is.
+//         serde_json::to_string(self).expect("Failed to serialize profile")
+//     }
+// }
 
 impl TryFrom<wasapi::Device> for DiscoveredDevice {
     type Error = RedefaulterError;
@@ -116,15 +116,15 @@ impl<State> DeviceSet<State> {
             RecordingComms => &self.recording_comms,
         }
     }
-    pub fn get_mut_role(&mut self, role: &DeviceRole) -> &mut WindowsAudioDevice<State> {
-        use DeviceRole::*;
-        match role {
-            Playback => &mut self.playback,
-            PlaybackComms => &mut self.playback_comms,
-            Recording => &mut self.recording,
-            RecordingComms => &mut self.recording_comms,
-        }
-    }
+    // pub fn get_mut_role(&mut self, role: &DeviceRole) -> &mut WindowsAudioDevice<State> {
+    //     use DeviceRole::*;
+    //     match role {
+    //         Playback => &mut self.playback,
+    //         PlaybackComms => &mut self.playback_comms,
+    //         Recording => &mut self.recording,
+    //         RecordingComms => &mut self.recording_comms,
+    //     }
+    // }
 }
 
 // A lot of this feels Derive-able.

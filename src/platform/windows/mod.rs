@@ -25,7 +25,7 @@ use crate::{
 use device_notifications::{NotificationCallbacks, WindowsAudioNotification};
 use policy_config::{IPolicyConfig, PolicyConfig};
 
-use super::{AudioDevice, ConfigEntry, Discovered};
+use super::{ConfigEntry, Discovered};
 
 pub mod device_notifications;
 pub mod devices;
@@ -166,8 +166,11 @@ impl AudioNightmare {
     fn print_profile_format(&self, playback: bool, recording: bool) {
         if playback {
             println!("Playback devices: ");
-            for device in &self.playback_devices {
-                println!("{}", device.1.profile_format());
+            for device in self.playback_devices.values() {
+                println!(
+                    "{}",
+                    serde_json::to_string(device).expect("Failed to serialize profile")
+                );
             }
         }
         if recording {
@@ -176,8 +179,11 @@ impl AudioNightmare {
             }
             println!("Recording devices: ");
 
-            for device in &self.recording_devices {
-                println!("{}", device.1.profile_format());
+            for device in self.recording_devices.values() {
+                println!(
+                    "{}",
+                    serde_json::to_string(device).expect("Failed to serialize profile")
+                );
             }
         }
     }

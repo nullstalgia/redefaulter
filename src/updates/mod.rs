@@ -310,19 +310,14 @@ fn update_backend_loop(mut actor: UpdateBackend) {
 #[derive(Debug)]
 pub struct UpdateHandle {
     command_tx: mpsc::Sender<UpdateCommand>,
-    // pub reply_rx: mpsc::Receiver<UpdateReply>,
 }
 
 impl UpdateHandle {
     pub fn new(event_proxy: AppEventProxy) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
-        // let (reply_tx, reply_rx) = mpsc::channel();
         let actor = UpdateBackend::new(command_rx, event_proxy);
         std::thread::spawn(move || update_backend_loop(actor));
-        Self {
-            command_tx,
-            // reply_rx,
-        }
+        Self { command_tx }
     }
     pub fn query_latest(&self) {
         let msg = UpdateCommand::CheckForUpdate;
@@ -376,7 +371,6 @@ impl App {
     pub fn handle_update_reply(&mut self, reply: UpdateReply) -> AppResult<()> {
         use UpdateReply::*;
         match reply {
-            // DownloadProgress(percentage) => (),
             ReadyToLaunch => {
                 self.kill_tray_menu();
                 start_new_version_popup();
@@ -399,9 +393,9 @@ impl App {
             }
             Error(e) => {
                 error!("Error during update! {e}");
-                // _ = self.updates.take();
+                _ = self.updates.take();
                 return Err(e);
-            } // CheckError(e) => (),
+            }
         }
 
         Ok(())
