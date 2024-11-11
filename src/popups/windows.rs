@@ -1,13 +1,19 @@
 use std::thread;
-use tao::event_loop::EventLoopProxy;
-use win_msgbox::{Okay, RetryCancel};
+use win_msgbox::{Okay, RetryCancel, YesNo};
 
-use crate::{app::CustomEvent, errors::RedefaulterError, processes::LockFile};
+use crate::{
+    app::{AppEventProxy, CustomEvent},
+    errors::RedefaulterError,
+    processes::LockFile,
+};
 
-pub fn profile_load_failed_popup(
-    error: RedefaulterError,
-    event_proxy: EventLoopProxy<CustomEvent>,
-) {
+// TODO First time setup:
+// Update check popup
+// Set current devices as desired
+// Unify devices popup
+// Make a profile popup
+
+pub fn profile_load_failed_popup(error: RedefaulterError, event_proxy: AppEventProxy) {
     thread::spawn(move || {
         let response = win_msgbox::error::<RetryCancel>(&format!(
             "{error}\n\nPlease fix the profile and try again."
@@ -49,4 +55,29 @@ pub fn fatal_error_popup(error: RedefaulterError, lock_file: Option<LockFile>) -
     }
 
     std::process::exit(libc::EXIT_FAILURE);
+}
+
+pub fn allow_update_check_popup(event_proxy: AppEventProxy) {
+    thread::spawn(move || {
+        let response = win_msgbox::information::<YesNo>(
+            "Allow Redefaulter to check for updates once during startup?",
+        )
+        .title("Redefaulter update check")
+        .show()
+        .expect("Couldn't show update check popup");
+
+        let response = match response {
+            YesNo::Yes => CustomEvent::UpdateCheckConsent(true),
+            YesNo::No => CustomEvent::UpdateCheckConsent(false),
+        };
+
+        event_proxy.send_event(response).unwrap();
+    });
+}
+
+pub fn start_new_version_popup() {
+    win_msgbox::information::<Okay>("Update complete! Ready to launch new version!")
+        .title("Redefaulter update success!")
+        .show()
+        .expect("Couldn't show update complete popup");
 }

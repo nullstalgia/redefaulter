@@ -9,6 +9,7 @@ mod profiles;
 mod settings;
 mod structs;
 mod tray_menu;
+mod updates;
 
 pub mod args;
 pub mod errors;

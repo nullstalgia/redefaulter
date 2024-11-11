@@ -4,10 +4,9 @@ use std::sync::{
 };
 
 use color_eyre::eyre::Result;
-use tao::event_loop::EventLoopProxy;
 use tracing::*;
 
-use crate::app::CustomEvent;
+use crate::app::{AppEventProxy, CustomEvent};
 
 // https://ratatui.rs/recipes/apps/better-panic/
 pub fn initialize_panic_handler() -> Result<()> {
@@ -53,7 +52,7 @@ pub fn initialize_panic_handler() -> Result<()> {
     Ok(())
 }
 
-pub fn initialize_ctrl_c_handler(proxy: EventLoopProxy<CustomEvent>) -> Result<()> {
+pub fn initialize_ctrl_c_handler(proxy: AppEventProxy) -> Result<()> {
     let running = Arc::new(AtomicUsize::new(0));
     ctrlc::set_handler(move || {
         let prev = running.fetch_add(1, Ordering::SeqCst);

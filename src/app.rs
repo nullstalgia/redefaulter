@@ -16,15 +16,16 @@ use tao::{
     event_loop::{ControlFlow, EventLoopProxy},
 };
 use tracing::*;
-use tray_icon::{TrayIcon, TrayIconEventReceiver};
+use tray_icon::{Icon, TrayIcon, TrayIconEventReceiver};
 
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
-    popups::settings_load_failed_popup,
+    popups::{allow_update_check_popup, settings_load_failed_popup},
     processes::{self, LockFile},
     profiles::Profiles,
     settings::Settings,
+    updates::{UpdateHandle, UpdateReply, UpdateState},
 };
 
 #[derive(Debug)]
@@ -32,9 +33,13 @@ pub enum CustomEvent {
     ProcessesChanged,
     AudioEndpointUpdate,
     AudioEndpointNotification(AudioEndpointNotification),
+    UpdateCheckConsent(bool),
+    UpdateReply(UpdateReply),
     ReloadProfiles,
     ExitRequested,
 }
+
+pub type AppEventProxy = EventLoopProxy<CustomEvent>;
 
 pub struct App {
     pub endpoints: AudioNightmare,
@@ -46,10 +51,15 @@ pub struct App {
     // Option instead of Takeable due to late initialization in EventLoop Init
     // Or possible non-initialization in the case of CLI commands
     pub tray_menu: Option<TrayIcon>,
+    pub normal_icon: Option<Icon>,
+    pub update_icon: Option<Icon>,
 
-    pub event_proxy: EventLoopProxy<CustomEvent>,
+    pub event_proxy: AppEventProxy,
 
     pub lock_file: Takeable<LockFile>,
+
+    pub updates: Takeable<UpdateHandle>,
+    pub update_state: UpdateState,
 
     // pub lock_file_path: PathBuf,
     pub settings: Settings,
@@ -62,7 +72,7 @@ pub struct App {
 // TODO check for wrestling with other apps
 
 impl App {
-    pub fn build(event_proxy: EventLoopProxy<CustomEvent>) -> AppResult<Self> {
+    pub fn build(event_proxy: AppEventProxy) -> AppResult<Self> {
         let processes = Arc::new(DashMap::new());
         let (process_tx, process_rx) = mpsc::channel();
         let map_clone = Arc::clone(&processes);
@@ -130,9 +140,12 @@ impl App {
             crate::popups::profile_load_failed_popup(e, event_proxy.clone());
         };
 
+        let updates = UpdateHandle::new(event_proxy.clone());
+
         Ok(Self {
             endpoints,
             profiles,
+            update_state: UpdateState::Idle,
             process_watcher_handle: Takeable::new(process_watcher_handle),
             // config_defaults,
             current_defaults,
@@ -142,6 +155,9 @@ impl App {
             lock_file: Takeable::new(lock_file),
             // lock_file_path,
             tray_menu: None,
+            normal_icon: None,
+            update_icon: None,
+            updates: Takeable::new(updates),
         })
     }
     /// Given a list of profiles, will return the roles that need to be changed to fit the active profiles.
@@ -201,11 +217,18 @@ impl App {
             return Err(RedefaulterError::ProcessWatcher(output));
         }
         match event {
+            // Note: If the user clicks on the icon before this event finishes,
+            // the tray menu and icon will become stuck and uninteractable.
+            // Might wanna open an issue about it later.
             Event::NewEvents(StartCause::Init) => {
                 *control_flow = ControlFlow::Wait;
                 self.tray_menu = Some(self.build_tray_late()?);
                 self.update_active_profiles(true)?;
                 self.change_devices_if_needed()?;
+                if self.settings.updates.allow_checking_for_updates {
+                    self.updates.query_latest();
+                }
+                self.first_time_popups();
             }
             Event::UserEvent(event) => {
                 // println!("user event: {event:?}");
@@ -257,6 +280,12 @@ impl App {
             // debug!("Tray Event: {event:?}");
         }
 
+        // if let Some(updates) = self.updates.as_ref() {
+        //     if let Ok(reply) = updates.reply_rx.try_recv() {
+
+        //     }
+        // }
+
         Ok(())
     }
     /// Handle our defined `CustomEvent`s coming in from the platform and our tasks
@@ -296,6 +325,21 @@ impl App {
                 debug!("Reload Profiles event recieved!");
                 self.reload_profiles()?;
             }
+            UpdateCheckConsent(consent) => {
+                if consent {
+                    self.settings.updates.allow_checking_for_updates = true;
+                    self.updates.query_latest();
+                } else {
+                    self.settings.updates.allow_checking_for_updates = false;
+                    self.settings.updates.update_check_prompt = true;
+                    self.updates.take();
+                }
+                self.settings.save(&self.config_path)?;
+            }
+            UpdateReply(reply) => {
+                debug!("Update Event: {reply:?}");
+                self.handle_update_reply(reply)?;
+            }
         }
         Ok(())
     }
@@ -329,5 +373,12 @@ impl App {
         self.update_active_profiles(false)?;
         self.change_devices_if_needed()?;
         Ok(())
+    }
+    fn first_time_popups(&self) {
+        if !self.settings.updates.update_check_prompt
+            && !self.settings.updates.allow_checking_for_updates
+        {
+            allow_update_check_popup(self.event_proxy.clone());
+        }
     }
 }

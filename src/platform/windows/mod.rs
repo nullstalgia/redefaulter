@@ -5,7 +5,6 @@ use menu_macro::*;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use takeable::Takeable;
-use tao::event_loop::EventLoopProxy;
 use tracing::*;
 use wasapi::*;
 use windows::{
@@ -18,7 +17,7 @@ use windows::{
 use windows_core::Interface;
 
 use crate::{
-    app::CustomEvent,
+    app::{AppEventProxy, CustomEvent},
     args::ListSubcommand,
     errors::{AppResult, RedefaulterError},
 };
@@ -51,7 +50,7 @@ pub struct AudioNightmare {
     /// Regex for removing numeric prefixes from devices to allow for fuzzy-matching later
     regex_replacing: Regex,
     /// Used to tell `App` that something has changed
-    event_proxy: Option<EventLoopProxy<CustomEvent>>,
+    event_proxy: Option<AppEventProxy>,
     /// When `true`, *all* actions taken towards the Console/Multimedia Role
     /// will be applied to the Communications Role
     pub unify_communications_devices: bool,
@@ -73,7 +72,7 @@ impl Drop for AudioNightmare {
 }
 impl AudioNightmare {
     pub fn build(
-        event_proxy: Option<EventLoopProxy<CustomEvent>>,
+        event_proxy: Option<AppEventProxy>,
         config: Option<&PlatformSettings>,
     ) -> AppResult<Self> {
         unsafe {

@@ -14,8 +14,6 @@ color-eyre = "0.6.3"
 image = "0.25.2"
 serde = "1.0.210"
 tray-icon = "0.19.0"
-wasapi = { git = "https://github.com/nullstalgia/wasapi-rs", branch = "feat/usability-improvements" }
-windows-core = { version = "0.57.0" }
 takeable = "0.2.2"
 libc = "0.2.161"
 better-panic = "0.3.0"
@@ -23,8 +21,6 @@ strip-ansi-escapes = "0.2.0"
 serde_derive = "1.0.210"
 toml = "0.8.19"
 thiserror = "1.0.64"
-windows-result = "0.2.0"
-wmi = "0.14.0"
 fs-err = "3.0.0"
 serde_json = "1.0.132"
 regex-lite = "0.1.6"
@@ -45,10 +41,25 @@ opener = { version = "0.7.2", features = ["reveal"] }
 muda = "0.15.2"
 serde_plain = "1.0.2"
 derivative = "2.2.0"
-win-msgbox = "0.2.1"
+sha2 = "0.10.8"
+self-replace = "1.5.0"
+tempfile = "3.14.0"
+reqwest = { version = "0.12.9", features = ["blocking"] }
+http = "1.1.0"
 # confique = { version = "0.3.0", features = ["toml"] }
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies]
+wasapi = { git = "https://github.com/nullstalgia/wasapi-rs", branch = "feat/usability-improvements" }
+windows-core = { version = "0.57.0" }
+windows-result = "0.2.0"
+wmi = "0.14.0"
+win-msgbox = "0.2.1"
+self_update = { version = "0.41.0", features = [
+    "compression-zip-bzip2",
+    "compression-zip-deflate",
+] }
+
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"
 features = [
     "implement",
@@ -70,3 +81,6 @@ features = [
 
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "1.4"
+
+# [target.'cfg(unix)'.dependencies]
+# self_update = { version = "0.41.0", features = ["compression-flate2"] }

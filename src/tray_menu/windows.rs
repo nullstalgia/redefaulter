@@ -6,7 +6,7 @@ use crate::{
     app::App,
     errors::AppResult,
     platform::{ConfigDevice, ConfigEntry, DeviceRole, DeviceSet},
-    tray_menu::{build_device_checks, common_ids::IGNORE_ID, DeviceSelectionType},
+    tray_menu::{build_device_checks, label_item, DeviceSelectionType},
 };
 
 impl App {
@@ -16,7 +16,7 @@ impl App {
         let mut devices: Vec<Box<dyn IsMenuItem>> = Vec::new();
         use DeviceRole::*;
 
-        let header = MenuItem::with_id(IGNORE_ID, "Active Devices:", false, None);
+        let header = label_item("Active Devices:");
         devices.push(Box::new(header));
 
         let build_device = |role: &DeviceRole| -> MenuItem {
@@ -29,7 +29,7 @@ impl App {
             //     device.human_name.clone()
             // };
             let text = format!("{role}: {human_name}");
-            MenuItem::with_id(IGNORE_ID, text, false, None)
+            label_item(text)
         };
 
         devices.push(Box::new(build_device(&Playback)));

@@ -8,6 +8,9 @@ on:
   release:
     types: [created]
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   upload-assets:
     strategy:

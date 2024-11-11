@@ -43,6 +43,21 @@ pub struct MiscSettings {
     pub log_level: String,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize, MenuToggle, MenuId, TrayChecks)]
+pub struct AutoUpdateSettings {
+    #[serde(default)]
+    #[menuid(skip)]
+    pub update_check_prompt: bool,
+    /// Check for updates on startup
+    ///
+    /// When true, allows the app to check for updates a single time when it launches.
+    #[serde(default)]
+    pub allow_checking_for_updates: bool,
+    #[serde(default)]
+    #[menuid(skip)]
+    pub version_skipped: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -52,7 +67,8 @@ pub struct Settings {
     #[serde(rename = "devices")]
     #[serde(default)]
     pub platform: PlatformSettings,
-    // pub updates: AutoUpdateSettings
+    #[serde(default)]
+    pub updates: AutoUpdateSettings,
 }
 
 impl Settings {
@@ -86,10 +102,3 @@ impl Settings {
         LevelFilter::from_str(&self.misc.log_level).unwrap_or(LevelFilter::DEBUG)
     }
 }
-
-// #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-// pub struct AutoUpdateSettings {
-//     pub update_check_prompt: bool,
-//     pub allow_checking_for_updates: bool,
-//     pub version_skipped: String,
-// }

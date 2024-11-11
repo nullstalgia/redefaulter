@@ -6,7 +6,7 @@ use std::{
     io::Write,
     os::windows::fs::FileTypeExt,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};

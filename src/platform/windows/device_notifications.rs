@@ -1,7 +1,6 @@
 // "Inspired" by https://github.com/fmsyt/output-switcher/blob/1528d44747793ab4e42d23761e021976a3113d98/src-tauri/src/ipc/audio/notifier.rs#L25
 
 use std::fmt::Debug;
-use tao::event_loop::EventLoopProxy;
 use wasapi::{Direction, Role};
 use windows::{
     core::{implement, PCWSTR},
@@ -15,7 +14,10 @@ use windows::{
     },
 };
 
-use crate::{app::CustomEvent, errors::AppResult};
+use crate::{
+    app::{AppEventProxy, CustomEvent},
+    errors::AppResult,
+};
 
 fn to_win_error<E: Debug>(e: E, code: WIN32_ERROR) -> windows::core::Error {
     windows::core::Error::new::<String>(code.to_hresult(), format!("{:?}", e))
@@ -44,7 +46,7 @@ pub enum WindowsAudioNotification {
 #[implement(IMMNotificationClient)]
 #[allow(non_camel_case_types)]
 // Bit of a circular dependency, not a fan.
-struct AppEventHandlerClient(EventLoopProxy<CustomEvent>);
+struct AppEventHandlerClient(AppEventProxy);
 
 impl IMMNotificationClient_Impl for AppEventHandlerClient {
     fn OnDeviceStateChanged(
@@ -141,7 +143,7 @@ pub(crate) struct NotificationCallbacks {
 }
 
 impl NotificationCallbacks {
-    pub(crate) fn new(tx: EventLoopProxy<CustomEvent>) -> Self {
+    pub(crate) fn new(tx: AppEventProxy) -> Self {
         let notification_client = AppEventHandlerClient(tx).into();
 
         Self {

@@ -7,3 +7,5 @@ mod common;
 pub use common::*;
 mod device_ser;
 pub use device_ser::*;
+mod updates;
+pub use updates::*;

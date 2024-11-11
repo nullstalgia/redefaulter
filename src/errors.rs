@@ -30,6 +30,10 @@ pub enum RedefaulterError {
     TrayIcon(#[from] tray_icon::BadIcon),
     #[error("Opener Error: {0}")]
     Opener(#[from] opener::OpenError),
+    #[error("Web Error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Updater Error: {0}")]
+    Updater(#[from] self_update::errors::Error),
     // My errors
     #[error("Field not found: {0}")]
     FieldNotFound(#[from] menu_macro::MenuMacroError),
@@ -65,4 +69,12 @@ pub enum RedefaulterError {
     AlreadyRunning,
     #[error("Failed to parse tray menu ID: {0}")]
     TrayMenuIdParse(String),
+    #[error("Unexpected HTTP Status: \"{0}\"")]
+    HttpStatus(u16),
+    #[error("Update checksum missing")]
+    MissingChecksum,
+    #[error("Update checksum mismatch")]
+    BadChecksum,
+    #[error("Tried to update non-portable app")]
+    NotPortable,
 }

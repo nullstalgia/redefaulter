@@ -1,4 +1,4 @@
-use crate::app::CustomEvent;
+use crate::app::{AppEventProxy, CustomEvent};
 use crate::errors::{AppResult, RedefaulterError};
 use crate::profiles::AppOverride;
 
@@ -8,7 +8,6 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{collections::HashMap, sync::mpsc::Sender};
-use tao::event_loop::EventLoopProxy;
 use tracing::*;
 use wmi::*;
 
@@ -84,7 +83,7 @@ impl Process {
 pub fn process_event_loop(
     process_map: Arc<DashMap<u32, Process>>,
     map_updated: Sender<(usize, Option<LockFile>)>,
-    event_proxy: EventLoopProxy<CustomEvent>,
+    event_proxy: AppEventProxy,
 ) -> AppResult<()> {
     let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
 

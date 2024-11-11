@@ -14,6 +14,7 @@ use crate::{
     platform::{ConfigDevice, DeviceRole, DiscoveredDevice},
     profiles::PROFILES_PATH,
     tray_menu::TrayDevice,
+    updates::UpdateState,
 };
 
 pub mod common_ids {
@@ -25,16 +26,22 @@ pub mod common_ids {
     pub const DEVICE_PREFIX: &str = "device";
 
     pub const IGNORE_ID: &str = "ignore";
+
+    pub const UPDATE_PREFIX: &str = "update";
+    pub const UPDATE_DOWNLOAD: &str = "update-download";
+    pub const UPDATE_OPEN_REPO: &str = "update-repo";
+    pub const UPDATE_DISMISS: &str = "update-dismiss";
+    pub const UPDATE_SKIP_VERSION: &str = "update-skip";
 }
 
 pub const TOOLTIP_PREFIX: &str = "Redefaulter";
 
 use common_ids::*;
 
-use super::DeviceSelectionType;
+use super::{tray_update_submenu, DeviceSelectionType};
 
 impl App {
-    pub fn build_tray_late(&self) -> AppResult<TrayIcon> {
+    pub fn build_tray_late(&mut self) -> AppResult<TrayIcon> {
         let menu = Menu::new();
 
         let loading = MenuItem::new("Loading profiles...", false, None);
@@ -43,8 +50,8 @@ impl App {
 
         // drop(quit_i);
 
-        // Add a copy to the struct if we start changing the icon?
-        let initial_icon = Icon::from_resource_name("redefaulter", None)?;
+        self.normal_icon = Some(Icon::from_resource_name("redefaulter", None)?);
+        self.update_icon = Some(Icon::from_resource_name("redefaulter-update", None)?);
 
         let initial_tooltip = format!("{} - Initializing", TOOLTIP_PREFIX);
 
@@ -55,7 +62,7 @@ impl App {
         let handle = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip(initial_tooltip)
-            .with_icon(initial_icon)
+            .with_icon(self.normal_icon.clone().unwrap())
             .build()?;
 
         Ok(handle)
@@ -80,6 +87,20 @@ impl App {
     // Right now it's on each profile change
     pub fn build_tray_contents(&self) -> AppResult<Menu> {
         let menu = Menu::new();
+
+        match &self.update_state {
+            UpdateState::Idle => (),
+            UpdateState::Downloading => {
+                let downloading = label_item("Downloading update...");
+                menu.append(&downloading)?;
+                menu.append(&PredefinedMenuItem::separator())?;
+            }
+            UpdateState::UpdateFound(version) => {
+                let update_submenu = tray_update_submenu(version)?;
+                menu.append(&update_submenu)?;
+                menu.append(&PredefinedMenuItem::separator())?;
+            }
+        }
 
         if self.settings.behavior.show_active_devices {
             let active_devices = self.tray_platform_active_devices()?;
@@ -159,9 +180,11 @@ impl App {
         // So I have to store the built objects somewhere else to be able to return *only* references to the dyn type
         // or just rereference it here.
         // And I can just chain them without any intermediary variables, so, fine.
+
+        let settings_text = format!("Settings - v{}", env!("CARGO_PKG_VERSION"));
         let submenu = SubmenuBuilder::new()
             .enabled(true)
-            .text("Settings")
+            .text(settings_text)
             .items(
                 &self
                     .settings
@@ -175,6 +198,15 @@ impl App {
                 &self
                     .settings
                     .behavior
+                    .build_check_menu_items()
+                    .iter()
+                    .map(|item| item as &dyn IsMenuItem)
+                    .collect::<Vec<_>>(),
+            )
+            .items(
+                &self
+                    .settings
+                    .updates
                     .build_check_menu_items()
                     .iter()
                     .map(|item| item as &dyn IsMenuItem)
@@ -230,6 +262,39 @@ impl App {
 
                 self.update_tray_menu()?;
             }
+            update_command if id.starts_with(UPDATE_PREFIX) => match update_command {
+                UPDATE_DISMISS => {
+                    _ = self.updates.take();
+                    self.update_state = UpdateState::Idle;
+                    if let Some(tray) = self.tray_menu.as_ref() {
+                        tray.set_icon(self.normal_icon.clone())?;
+                        self.update_tray_menu()?;
+                    }
+                }
+                UPDATE_SKIP_VERSION => {
+                    _ = self.updates.take();
+                    let UpdateState::UpdateFound(version) = &self.update_state else {
+                        panic!();
+                    };
+                    self.settings.updates.version_skipped = version.to_owned();
+                    self.settings.save(&self.config_path)?;
+                    self.update_state = UpdateState::Idle;
+                    if let Some(tray) = self.tray_menu.as_ref() {
+                        tray.set_icon(self.normal_icon.clone())?;
+                        self.update_tray_menu()?;
+                    }
+                }
+                UPDATE_OPEN_REPO => {
+                    let url = format!("{}/releases", env!("CARGO_PKG_REPOSITORY"));
+                    opener::open_browser(url)?;
+                }
+                UPDATE_DOWNLOAD => {
+                    self.update_state = UpdateState::Downloading;
+                    self.update_tray_menu()?;
+                    self.updates.download_update();
+                }
+                _ => error!("Invalid update menu command!"),
+            },
             _ => (),
         }
         Ok(())
@@ -359,4 +424,8 @@ pub fn build_device_checks(
     }
 
     items
+}
+
+pub fn label_item<S: AsRef<str>>(text: S) -> MenuItem {
+    MenuItem::with_id(IGNORE_ID, text.as_ref(), false, None)
 }
