@@ -178,7 +178,11 @@ Playback and Recording Communication devices always be forced to follow the Defa
     ];
     let prompts_count = prompts.len();
     let text = format!(
-        "Perform first time setup for Redefaulter?\n\nOnly {prompts_count} quick questions, and you can Cancel at any time.",
+        r#"Thanks for using Redefaulter! Most controls reside in the System Tray icon.
+
+Would you like to perform first time setup for Redefaulter?
+
+Only {prompts_count} quick questions, and you can Cancel at any time."#,
     );
 
     let title = format!("Redefaulter setup 0/{prompts_count}");

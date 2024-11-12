@@ -236,7 +236,7 @@ impl UpdateBackend {
         let release = self_update::backends::github::Update::configure()
             // .auth_token("github_pat_xyz")
             .repo_owner("nullstalgia")
-            .repo_name("redefaulter_hidden")
+            .repo_name("redefaulter")
             .bin_name(bin_name)
             .current_version(current)
             .build()?
