@@ -38,8 +38,6 @@ impl App {
     }
 }
 
-// Make a profile popup
-
 pub fn profile_load_failed_popup(error: RedefaulterError, event_proxy: AppEventProxy) {
     thread::spawn(move || {
         let response = win_msgbox::error::<RetryCancel>(&format!(
@@ -110,7 +108,7 @@ pub fn first_time_popups(current_defaults: DeviceSet<Discovered>, event_proxy: A
 }
 
 // Lazy way of doing this, should maybe be part of the set methods?
-fn format_devices(devices: &DeviceSet<Discovered>, ignore_comms: bool) -> String {
+fn format_devices(devices: &DeviceSet<Discovered>, unify_example: bool) -> String {
     let mut buffer = String::new();
 
     let device_string = |role: &DeviceRole| -> String {
@@ -121,14 +119,16 @@ fn format_devices(devices: &DeviceSet<Discovered>, ignore_comms: bool) -> String
 
     use DeviceRole::*;
 
-    buffer.push_str(&device_string(&Playback));
-    if !ignore_comms {
+    if !unify_example {
+        buffer.push_str(&device_string(&Playback));
         buffer.push_str(&device_string(&PlaybackComms));
-    }
-
-    buffer.push_str(&device_string(&Recording));
-    if !ignore_comms {
+        buffer.push_str(&device_string(&Recording));
         buffer.push_str(&device_string(&RecordingComms));
+    } else {
+        buffer.push_str(&device_string(&Playback));
+        buffer.push_str(&device_string(&PlaybackComms));
+        buffer.push_str("\nwould be considered as just\n\n");
+        buffer.push_str(&device_string(&Playback));
     }
     buffer
 }
@@ -148,9 +148,6 @@ Playback and Recording Communication devices always be forced to follow the Defa
 (In app override profiles, Communications devices will be ignored.)
 
 
-{all_devices}
-will be considered as
-
 {unified_devices}"#,
     );
 
@@ -169,7 +166,6 @@ will be considered as
             YesNoCancel::Yes => Some(FirstTimeChoice::UseCurrentDefaults),
             _ => None,
         }),
-        // Make sure to wipe comm devices if yes
         (unify_comms_prompt, |c| match c {
             YesNoCancel::Yes => Some(FirstTimeChoice::PlatformChoice(
                 PlatformPrompts::UnifyCommunications(true),
@@ -182,7 +178,7 @@ will be considered as
     ];
     let prompts_count = prompts.len();
     let text = format!(
-        "Perform first time setup for Redefaulter?\n\nOnly {prompts_count} quick questions.",
+        "Perform first time setup for Redefaulter?\n\nOnly {prompts_count} quick questions, and you can Cancel at any time.",
     );
 
     let title = format!("Redefaulter setup 0/{prompts_count}");
