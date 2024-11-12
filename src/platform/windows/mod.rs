@@ -4,6 +4,7 @@ use devices::WindowsAudioDevice;
 use menu_macro::*;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
+use shadowplay::ShadowPlayHandle;
 use takeable::Takeable;
 use tracing::*;
 use wasapi::*;
@@ -33,6 +34,7 @@ pub use devices::{ConfigDevice, DeviceRole, DeviceSet, DiscoveredDevice};
 
 mod device_ser;
 mod policy_config;
+mod shadowplay;
 
 pub struct AudioNightmare {
     /// Interface to query endpoints through
@@ -54,6 +56,9 @@ pub struct AudioNightmare {
     /// When `true`, *all* actions taken towards the Console/Multimedia Role
     /// will be applied to the Communications Role
     pub unify_communications_devices: bool,
+    /// When present, will be used to attempt to keep the ShadowPlay recorded device
+    /// the same as the Default `Recording` device.
+    shadowplay: Option<ShadowPlayHandle>,
 }
 impl Drop for AudioNightmare {
     fn drop(&mut self) {
@@ -75,6 +80,9 @@ impl AudioNightmare {
         event_proxy: Option<AppEventProxy>,
         config: Option<&PlatformSettings>,
     ) -> AppResult<Self> {
+        let default = PlatformSettings::default();
+        let config = config.unwrap_or(&default);
+
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
         }
@@ -83,8 +91,6 @@ impl AudioNightmare {
             unsafe { CoCreateInstance(&PolicyConfig, None, CLSCTX_ALL) }?;
         let device_enumerator: IMMDeviceEnumerator =
             unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }?;
-
-        // let (tx, rx) = mpsc::channel();
 
         let mut playback_devices = BTreeMap::new();
         let mut recording_devices = BTreeMap::new();
@@ -121,8 +127,19 @@ impl AudioNightmare {
 
         let regex_replacing = Regex::new(r"\((\d+)-\s*(.+?)\)").expect("Regex failed to build");
 
-        let unify_communications_devices =
-            config.map_or(false, |config| config.unify_communications_devices);
+        let unify_communications_devices = config.unify_communications_devices;
+
+        let shadowplay = if config.shadowplay_support {
+            match ShadowPlayHandle::build() {
+                Ok(handle) => Some(handle),
+                Err(e) => {
+                    error!("{e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         Ok(Self {
             policy_config: Takeable::new(policy_config),
@@ -133,8 +150,9 @@ impl AudioNightmare {
             recording_devices,
             regex_finding,
             regex_replacing,
-            unify_communications_devices,
             event_proxy,
+            unify_communications_devices,
+            shadowplay,
         })
     }
     pub fn set_device_role(&self, device_id: &str, role: &Role) -> AppResult<()> {
@@ -319,6 +337,13 @@ impl AudioNightmare {
             Direction::Capture => self.recording_devices.get(guid),
         }
     }
+    pub fn get_role_default(&self, role: &DeviceRole) -> AppResult<DiscoveredDevice> {
+        let target_role: Role = role.into();
+        let target_direction: Direction = role.into();
+        let default_device: DiscoveredDevice =
+            get_default_device_for_role(&target_direction, &target_role)?.try_into()?;
+        Ok(default_device)
+    }
     // Bit of a slow operation, queries Windows for all four roles individually.
     pub fn get_current_defaults(&self) -> AppResult<DeviceSet<Discovered>> {
         use wasapi::Direction::*;
@@ -331,6 +356,14 @@ impl AudioNightmare {
             get_default_device_for_role(&Capture, &Console)?.try_into()?;
         let recording_comms: DiscoveredDevice =
             get_default_device_for_role(&Capture, &Communications)?.try_into()?;
+
+        // Tacking on ShadowPlay's action here, since this runs not too frequently
+        // (mainly only when devices change),
+        // but enough to not lag behind.
+        // Plus we just got the most recent Recording device, which is the one we want.
+        if let Some(shadowplay) = self.shadowplay.as_ref() {
+            shadowplay.microphone_change(&recording.guid);
+        }
 
         Ok(DeviceSet {
             playback,
@@ -422,6 +455,25 @@ impl AudioNightmare {
     /// Update the Platform handler with the given config
     pub fn update_config(&mut self, config: &PlatformSettings) {
         self.unify_communications_devices = config.unify_communications_devices;
+
+        if config.shadowplay_support {
+            self.shadowplay = match ShadowPlayHandle::build() {
+                Ok(handle) => {
+                    if let Ok(recording) = self.get_role_default(&DeviceRole::Recording) {
+                        handle.microphone_change(&recording.guid);
+                        Some(handle)
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => {
+                    error!("{e}");
+                    None
+                }
+            };
+        } else {
+            self.shadowplay = None;
+        }
     }
     // Could probably replace this with some generic iterator over the enum variants for `DeviceRole`...
     pub fn copy_all_roles(
@@ -484,11 +536,15 @@ pub struct PlatformSettings {
     /// Unify Communications Devices
     ///
     /// When true, all communications entries are ignored. Any higher priority profile entries that change only communications device will be ignored.
-    ///
-    /// TODO: Make this work on its own when there's not a given set of devices?
     #[menuid(rename = "unify")]
     #[serde(default)]
     pub unify_communications_devices: bool,
+    /// ShadowPlay Support (Experimental)
+    ///
+    /// When true, will also attempt to update the chosen recording device for NVIDIA's ShadowPlay feature
+    #[menuid(rename = "shadow")]
+    #[serde(default)]
+    pub shadowplay_support: bool,
     #[menuid(skip)]
     #[serde(default)]
     #[serde(rename = "default")]

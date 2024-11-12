@@ -1,7 +1,6 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
-use wasapi::Direction;
 
 use crate::{
     errors::{AppResult, RedefaulterError},
@@ -150,7 +149,7 @@ impl Display for DeviceRole {
     }
 }
 
-impl From<&DeviceRole> for Direction {
+impl From<&DeviceRole> for wasapi::Direction {
     fn from(value: &DeviceRole) -> Self {
         match value {
             DeviceRole::Playback | DeviceRole::PlaybackComms => Self::Render,
@@ -159,7 +158,22 @@ impl From<&DeviceRole> for Direction {
     }
 }
 
-impl From<DeviceRole> for Direction {
+impl From<DeviceRole> for wasapi::Direction {
+    fn from(value: DeviceRole) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&DeviceRole> for wasapi::Role {
+    fn from(value: &DeviceRole) -> Self {
+        match value {
+            DeviceRole::Playback | DeviceRole::Recording => Self::Console,
+            DeviceRole::PlaybackComms | DeviceRole::RecordingComms => Self::Communications,
+        }
+    }
+}
+
+impl From<DeviceRole> for wasapi::Role {
     fn from(value: DeviceRole) -> Self {
         Self::from(&value)
     }

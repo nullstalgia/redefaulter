@@ -59,6 +59,7 @@ self_update = { version = "0.41.0", features = [
     "compression-zip-bzip2",
     "compression-zip-deflate",
 ] }
+shadowplay = { path = "shadowplay-api-rs" }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"

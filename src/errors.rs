@@ -37,6 +37,8 @@ pub enum RedefaulterError {
     // My errors
     #[error("Field not found: {0}")]
     FieldNotFound(#[from] menu_macro::MenuMacroError),
+    #[error("ShadowPlay Error: {0}")]
+    ShadowPlay(#[from] shadowplay::Error),
     #[error("Device not found: {0}")]
     DeviceNotFound(String),
     #[error("Profile not found: {0:?}")]
