@@ -20,7 +20,7 @@ use crate::{
 };
 
 fn to_win_error<E: Debug>(e: E, code: WIN32_ERROR) -> windows::core::Error {
-    windows::core::Error::new::<String>(code.to_hresult(), format!("{:?}", e))
+    windows::core::Error::new::<String>(code.to_hresult(), format!("{e:?}"))
 }
 
 #[derive(Debug, Clone)]
@@ -138,7 +138,7 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient {
     }
 }
 
-pub(crate) struct NotificationCallbacks {
+pub struct NotificationCallbacks {
     notification_client: IMMNotificationClient,
 }
 

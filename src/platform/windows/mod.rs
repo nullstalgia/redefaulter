@@ -121,11 +121,8 @@ impl AudioNightmare {
 
         let regex_replacing = Regex::new(r"\((\d+)-\s*(.+?)\)").expect("Regex failed to build");
 
-        let unify_communications_devices = if let Some(config) = config {
-            config.unify_communications_devices
-        } else {
-            false
-        };
+        let unify_communications_devices =
+            config.map_or(false, |config| config.unify_communications_devices);
 
         Ok(Self {
             policy_config: Takeable::new(policy_config),
@@ -148,7 +145,7 @@ impl AudioNightmare {
         }?;
         Ok(())
     }
-    pub fn print_devices(&self, categories: ListSubcommand) {
+    pub fn print_devices(&self, categories: &ListSubcommand) {
         let (playback, recording) = {
             // If neither specified, do both
             if !categories.playback && !categories.recording {
@@ -258,11 +255,10 @@ impl AudioNightmare {
 
         Ok(())
     }
-    fn remove_endpoint(&mut self, id: &str) -> AppResult<()> {
+    fn remove_endpoint(&mut self, id: &str) {
         if self.playback_devices.remove(id).is_none() {
             self.recording_devices.remove(id);
         }
-        Ok(())
     }
     pub fn handle_endpoint_notification(
         &mut self,
@@ -272,13 +268,13 @@ impl AudioNightmare {
         debug!("{notif:?}");
         match notif {
             DeviceAdded { id } => self.add_endpoint(&id, false)?,
-            DeviceRemoved { id } => self.remove_endpoint(&id)?,
+            DeviceRemoved { id } => self.remove_endpoint(&id),
             DeviceStateChanged { id, state } => match state.0 {
                 // https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-state-xxx-constants
                 // ACTIVE
                 0x1 => self.add_endpoint(&id, true)?,
                 // DISABLED | NOTPRESENT | UNPLUGGED
-                0x2 | 0x4 | 0x8 => self.remove_endpoint(&id)?,
+                0x2 | 0x4 | 0x8 => self.remove_endpoint(&id),
                 _ => panic!("Got unexpected state from DeviceStateChanged!"),
             },
             DefaultDeviceChanged { .. } => (),
@@ -457,7 +453,7 @@ impl AudioNightmare {
                     .regex_replacing
                     .replace_all(&discovered.human_name, "($2)");
 
-                (fuzzy_name.to_string(), "".to_string())
+                (fuzzy_name.to_string(), String::new())
             } else {
                 (discovered.human_name.to_owned(), discovered.guid.to_owned())
             }
@@ -516,6 +512,6 @@ impl ToWide for String {
 
 impl WideString {
     pub fn as_pwstr(&self) -> PWSTR {
-        PWSTR(self.0.as_ptr() as *mut u16)
+        PWSTR(self.0.as_ptr().cast_mut())
     }
 }

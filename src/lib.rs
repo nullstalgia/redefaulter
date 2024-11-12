@@ -89,7 +89,7 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         match subcommand {
             args::SubCommands::List(categories) => {
                 let platform = AudioNightmare::build(None, None)?;
-                platform.print_devices(categories);
+                platform.print_devices(&categories);
                 return Ok(());
             }
             args::SubCommands::Tui(_) => todo!(),

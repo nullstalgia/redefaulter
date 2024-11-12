@@ -35,7 +35,7 @@ pub const PROFILES_PATH: &str = "profiles";
 
 impl Profiles {
     pub fn build(processes: Arc<DashMap<u32, Process>>) -> AppResult<Self> {
-        let profiles = Profiles {
+        let profiles = Self {
             inner: BTreeMap::new(),
             active: BTreeSet::new(),
             processes,
@@ -110,7 +110,7 @@ impl Profiles {
     /// Returns `true` if there was a change in active profiles.
     ///
     /// Only need to call this when processes change, not audio endpoints.
-    pub fn update_active_profiles(&mut self, force_update: bool) -> AppResult<bool> {
+    pub fn update_active_profiles(&mut self, force_update: bool) -> bool {
         let mut active_profiles = BTreeSet::new();
         let total_profiles = self.inner.len();
         // Checking for wildcard ("*"-only) profiles
@@ -143,9 +143,9 @@ impl Profiles {
         if force_update || length_changed || profiles_changed {
             self.active = new_profiles.into_iter().cloned().collect();
 
-            Ok(true)
+            true
         } else {
-            Ok(false)
+            false
         }
     }
     // Unwraps should be fine here, I want it to panic anyway if we try
@@ -174,7 +174,7 @@ impl From<DeviceSet<ConfigEntry>> for AppOverride {
     }
 }
 
-/// Deserializes toml config into an [AppOverride]
+/// Deserializes toml config into an [`AppOverride`]
 fn try_load_profile(path: &Path) -> AppResult<(OsString, AppOverride)> {
     let file_name = path.file_stem().expect("File has no name?").to_owned();
     let profile: AppOverride = toml::from_str(&fs::read_to_string(path)?).map_err(|e| {

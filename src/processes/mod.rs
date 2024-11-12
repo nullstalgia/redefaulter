@@ -40,9 +40,8 @@ impl Process {
             // Expecting an absolute path
             None if needs_path => false,
             Some(path) if needs_path => *path == profile.process_path,
-            // If not expecting an absolute path, then see if the name matches
-            None => self.name == profile.process_path,
-            Some(_) => self.name == profile.process_path,
+            // If not expecting an absolute path, then see if the process name matches
+            _ => self.name == profile.process_path,
         }
     }
 }
@@ -132,8 +131,6 @@ pub fn process_event_loop(
         return Ok(());
     }
 
-    let mut filters = HashMap::<String, FilterValue>::new();
-    filters.insert("TargetInstance".to_owned(), FilterValue::is_a::<Process>()?);
     let query = concat!(
         // Get events
         "SELECT * FROM __InstanceOperationEvent ",

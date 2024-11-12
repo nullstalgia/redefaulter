@@ -94,9 +94,8 @@ impl App {
             }
         };
 
-        let lock_file = match lock_file {
-            Some(file) => file,
-            None => return Err(RedefaulterError::AlreadyRunning),
+        let Some(lock_file) = lock_file else {
+            return Err(RedefaulterError::AlreadyRunning);
         };
 
         assert_eq!(initial_size, processes.len());
@@ -198,7 +197,7 @@ impl App {
     }
     // TODO find more graceful way to do the initial/force update
     pub fn update_active_profiles(&mut self, force_update: bool) -> AppResult<()> {
-        let profiles_changed = self.profiles.update_active_profiles(force_update)?;
+        let profiles_changed = self.profiles.update_active_profiles(force_update);
         if profiles_changed {
             self.update_tray_menu()?;
         }

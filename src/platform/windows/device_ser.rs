@@ -28,7 +28,7 @@ impl<'de, State> Deserialize<'de> for WindowsAudioDevice<State> {
             _ => (String::new(), String::new()),
         };
 
-        Ok(WindowsAudioDevice::new(human_name, guid))
+        Ok(Self::new(human_name, guid))
     }
 }
 
@@ -37,14 +37,14 @@ impl<State> Serialize for WindowsAudioDevice<State> {
     where
         S: serde::Serializer,
     {
-        let mut serialized = String::new();
+        let mut buffer = String::new();
         if !self.human_name.is_empty() {
-            serialized.push_str(&self.human_name);
+            buffer.push_str(&self.human_name);
         }
         if !self.guid.is_empty() {
-            serialized.push(DEVICE_DELIMITER);
-            serialized.push_str(&self.guid);
+            buffer.push(DEVICE_DELIMITER);
+            buffer.push_str(&self.guid);
         }
-        serializer.serialize_str(&serialized)
+        serializer.serialize_str(&buffer)
     }
 }

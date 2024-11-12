@@ -141,12 +141,12 @@ pub enum DeviceRole {
 impl Display for DeviceRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let role_str = match self {
-            DeviceRole::Playback => "Playback",
-            DeviceRole::PlaybackComms => "Playback Comm.",
-            DeviceRole::Recording => "Recording",
-            DeviceRole::RecordingComms => "Recording Comm.",
+            Self::Playback => "Playback",
+            Self::PlaybackComms => "Playback Comm.",
+            Self::Recording => "Recording",
+            Self::RecordingComms => "Recording Comm.",
         };
-        write!(f, "{}", role_str)
+        write!(f, "{role_str}")
     }
 }
 
@@ -168,10 +168,8 @@ impl From<DeviceRole> for Direction {
 impl<State> Display for WindowsAudioDevice<State> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match (self.guid.is_empty(), self.human_name.is_empty()) {
-            // Both populated, just use name
-            (false, false) => write!(f, "{}", self.human_name),
-            // Only name populated
-            (true, false) => write!(f, "{}", self.human_name),
+            // If the name's populated, just use that
+            (_, false) => write!(f, "{}", self.human_name),
             // Only GUID populated
             (false, true) => write!(f, "By GUID: \"{}\"", self.guid),
             // Neither populated?

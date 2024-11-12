@@ -84,3 +84,11 @@ embed-resource = "1.4"
 
 # [target.'cfg(unix)'.dependencies]
 # self_update = { version = "0.41.0", features = ["compression-flate2"] }
+
+# [lints.clippy]
+# pedantic = "deny"
+# nursery = "deny"
+
+# pedantic = { level = "deny", priority = -1 }
+# nursery = { level = "deny", priority = -1 }
+# enum_glob_use = "allow"

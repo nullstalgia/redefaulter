@@ -99,24 +99,21 @@ impl<'a> Serialize for TrayDevice<'a> {
     where
         S: serde::Serializer,
     {
-        let mut serialized = format!(
-            "{DEVICE_PREFIX}{TRAY_ID_DELIMITER}{}",
-            match &self.destination {
-                DeviceSelectionType::ConfigDefault => "",
-                DeviceSelectionType::Profile(name) => name,
-            }
-        );
+        let guid = match &self.destination {
+            DeviceSelectionType::ConfigDefault => "",
+            DeviceSelectionType::Profile(name) => name,
+        };
+        let mut buffer = format!("{DEVICE_PREFIX}{TRAY_ID_DELIMITER}{guid}",);
 
-        serialized.push(TRAY_ID_DELIMITER);
-        serialized
-            .push_str(&serde_plain::to_string(&self.role).map_err(serde::ser::Error::custom)?);
+        buffer.push(TRAY_ID_DELIMITER);
+        buffer.push_str(&serde_plain::to_string(&self.role).map_err(serde::ser::Error::custom)?);
 
         if let Some(guid) = &self.guid {
-            serialized.push(TRAY_ID_DELIMITER);
-            serialized.push_str(guid);
+            buffer.push(TRAY_ID_DELIMITER);
+            buffer.push_str(guid);
         }
 
-        serializer.serialize_str(&serialized)
+        serializer.serialize_str(&buffer)
     }
 }
 
