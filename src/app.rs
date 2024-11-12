@@ -21,7 +21,7 @@ use tray_icon::{Icon, TrayIcon, TrayIconEventReceiver};
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
-    popups::{allow_update_check_popup, settings_load_failed_popup},
+    popups::{first_time_popups, settings_load_failed_popup, FirstTimeChoice},
     processes::{self, LockFile},
     profiles::Profiles,
     settings::Settings,
@@ -33,8 +33,8 @@ pub enum CustomEvent {
     ProcessesChanged,
     AudioEndpointUpdate,
     AudioEndpointNotification(AudioEndpointNotification),
-    UpdateCheckConsent(bool),
     UpdateReply(UpdateReply),
+    FirstTimeChoice(FirstTimeChoice),
     ReloadProfiles,
     ExitRequested,
 }
@@ -227,7 +227,9 @@ impl App {
                 if self.settings.updates.allow_checking_for_updates {
                     self.updates.query_latest();
                 }
-                self.first_time_popups();
+                if !self.settings.misc.first_time_setup_done {
+                    first_time_popups(self.current_defaults.clone(), self.event_proxy.clone());
+                }
             }
             Event::UserEvent(event) => {
                 // println!("user event: {event:?}");
@@ -324,22 +326,42 @@ impl App {
                 debug!("Reload Profiles event recieved!");
                 self.reload_profiles()?;
             }
-            UpdateCheckConsent(consent) => {
-                if consent {
-                    self.settings.updates.allow_checking_for_updates = true;
-                    self.updates.query_latest();
-                } else {
-                    self.settings.updates.allow_checking_for_updates = false;
-                    self.settings.updates.update_check_prompt = true;
-                    self.updates.take();
-                }
-                self.settings.save(&self.config_path)?;
+            FirstTimeChoice(choice) => {
+                self.handle_first_time_choice(choice)?;
             }
             UpdateReply(reply) => {
                 debug!("Update Event: {reply:?}");
                 self.handle_update_reply(reply)?;
             }
         }
+        Ok(())
+    }
+    fn handle_first_time_choice(&mut self, choice: FirstTimeChoice) -> AppResult<()> {
+        match choice {
+            FirstTimeChoice::SetupFinished => {
+                self.settings.misc.first_time_setup_done = true;
+            }
+            FirstTimeChoice::PlatformChoice(choice) => {
+                self.handle_platform_first_time_choice(choice)?;
+            }
+            FirstTimeChoice::UseCurrentDefaults => {
+                self.endpoints.copy_all_roles(
+                    &mut self.settings.platform.default_devices,
+                    &self.current_defaults,
+                    self.settings.behavior.always_save_generics,
+                );
+            }
+            FirstTimeChoice::UpdateCheckConsent(consent) => {
+                if consent {
+                    self.settings.updates.allow_checking_for_updates = true;
+                    self.updates.query_latest();
+                } else {
+                    self.settings.updates.allow_checking_for_updates = false;
+                    self.updates.take();
+                }
+            }
+        }
+        self.settings.save(&self.config_path)?;
         Ok(())
     }
     /// Query the OS for the current default endpoints.
@@ -372,12 +394,5 @@ impl App {
         self.update_active_profiles(false)?;
         self.change_devices_if_needed()?;
         Ok(())
-    }
-    fn first_time_popups(&self) {
-        if !self.settings.updates.update_check_prompt
-            && !self.settings.updates.allow_checking_for_updates
-        {
-            allow_update_check_popup(self.event_proxy.clone());
-        }
     }
 }

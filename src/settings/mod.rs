@@ -40,14 +40,14 @@ pub struct BehaviorSettings {
 #[derivative(Default)]
 pub struct MiscSettings {
     #[derivative(Default(value = "String::from(\"debug\")"))]
+    #[serde(default)]
     pub log_level: String,
+    #[serde(default)]
+    pub first_time_setup_done: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, MenuToggle, MenuId, TrayChecks)]
 pub struct AutoUpdateSettings {
-    #[serde(default)]
-    #[menuid(skip)]
-    pub update_check_prompt: bool,
     /// Check for updates on startup
     ///
     /// When true, allows the app to check for updates a single time when it launches.

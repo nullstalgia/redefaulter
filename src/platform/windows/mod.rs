@@ -423,6 +423,22 @@ impl AudioNightmare {
     pub fn update_config(&mut self, config: &PlatformSettings) {
         self.unify_communications_devices = config.unify_communications_devices;
     }
+    // Could probably replace this with some generic iterator over the enum variants for `DeviceRole`...
+    pub fn copy_all_roles(
+        &self,
+        dest: &mut DeviceSet<ConfigEntry>,
+        source: &DeviceSet<Discovered>,
+        make_fuzzy_name: bool,
+    ) {
+        use DeviceRole::*;
+        let roles = [Playback, PlaybackComms, Recording, RecordingComms];
+
+        for role in roles {
+            let real_device = source.get_role(&role);
+            let config_device = self.device_to_config_entry(real_device, make_fuzzy_name);
+            dest.update_role(&role, config_device);
+        }
+    }
     pub fn update_config_entry(
         &self,
         entry: &mut DeviceSet<ConfigEntry>,
@@ -459,10 +475,7 @@ impl AudioNightmare {
             }
         };
 
-        let config_device: WindowsAudioDevice<ConfigEntry> =
-            WindowsAudioDevice::new(human_name, guid);
-
-        config_device
+        WindowsAudioDevice::new(human_name, guid)
     }
 }
 

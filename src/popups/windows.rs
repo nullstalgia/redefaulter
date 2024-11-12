@@ -1,16 +1,43 @@
 use std::thread;
-use win_msgbox::{Okay, RetryCancel, YesNo};
+use win_msgbox::{Okay, RetryCancel, YesNo, YesNoCancel};
 
 use crate::{
-    app::{AppEventProxy, CustomEvent},
-    errors::RedefaulterError,
+    app::{App, AppEventProxy, CustomEvent},
+    errors::{AppResult, RedefaulterError},
+    platform::{DeviceRole, DeviceSet, Discovered},
     processes::LockFile,
 };
 
-// TODO First time setup:
-// Update check popup
-// Set current devices as desired
-// Unify devices popup
+use super::FirstTimeChoice;
+
+#[derive(Debug)]
+pub enum PlatformPrompts {
+    UnifyCommunications(bool),
+}
+
+impl App {
+    pub fn handle_platform_first_time_choice(&mut self, choice: PlatformPrompts) -> AppResult<()> {
+        match choice {
+            PlatformPrompts::UnifyCommunications(unify) => {
+                self.settings.platform.unify_communications_devices = unify;
+                if unify {
+                    self.settings
+                        .platform
+                        .default_devices
+                        .clear_role(&DeviceRole::PlaybackComms);
+                    self.settings
+                        .platform
+                        .default_devices
+                        .clear_role(&DeviceRole::RecordingComms);
+                }
+                self.change_devices_if_needed()?;
+                self.update_tray_menu()?;
+            }
+        }
+        Ok(())
+    }
+}
+
 // Make a profile popup
 
 pub fn profile_load_failed_popup(error: RedefaulterError, event_proxy: AppEventProxy) {
@@ -57,27 +84,122 @@ pub fn fatal_error_popup(error: RedefaulterError, lock_file: Option<LockFile>) -
     std::process::exit(libc::EXIT_FAILURE);
 }
 
-pub fn allow_update_check_popup(event_proxy: AppEventProxy) {
-    thread::spawn(move || {
-        let response = win_msgbox::information::<YesNo>(
-            "Allow Redefaulter to check for updates once during startup?",
-        )
-        .title("Redefaulter update check")
-        .show()
-        .expect("Couldn't show update check popup");
-
-        let response = match response {
-            YesNo::Yes => CustomEvent::UpdateCheckConsent(true),
-            YesNo::No => CustomEvent::UpdateCheckConsent(false),
-        };
-
-        event_proxy.send_event(response).unwrap();
-    });
-}
-
 pub fn start_new_version_popup() {
     win_msgbox::information::<Okay>("Update complete! Ready to launch new version!")
         .title("Redefaulter update success!")
         .show()
         .expect("Couldn't show update complete popup");
+}
+
+pub fn first_time_popups(current_defaults: DeviceSet<Discovered>, event_proxy: AppEventProxy) {
+    thread::spawn(move || {
+        first_time_impl(current_defaults, &event_proxy);
+        event_proxy
+            .send_event(CustomEvent::FirstTimeChoice(FirstTimeChoice::SetupFinished))
+            .unwrap();
+    });
+}
+
+// Lazy way of doing this, should maybe be part of the set methods?
+fn format_devices(devices: &DeviceSet<Discovered>, ignore_comms: bool) -> String {
+    let mut buffer = String::new();
+
+    let device_string = |role: &DeviceRole| -> String {
+        let device = devices.get_role(role);
+        let human_name = &device.human_name;
+        format!("{role}: {human_name}\n")
+    };
+
+    use DeviceRole::*;
+
+    buffer.push_str(&device_string(&Playback));
+    if !ignore_comms {
+        buffer.push_str(&device_string(&PlaybackComms));
+    }
+
+    buffer.push_str(&device_string(&Recording));
+    if !ignore_comms {
+        buffer.push_str(&device_string(&RecordingComms));
+    }
+    buffer
+}
+
+fn first_time_impl(current_defaults: DeviceSet<Discovered>, event_proxy: &AppEventProxy) {
+    let all_devices = format_devices(&current_defaults, false);
+    let unified_devices = format_devices(&current_defaults, true);
+
+    let current_device_prompt =
+        format!("Set your current devices as your preferred defaults?\n\n{all_devices}",);
+
+    let unify_comms_prompt = format!(
+        r#"Would you like to enable "Unify Communications Devices"?
+
+Playback and Recording Communication devices always be forced to follow the Default Playback or Recording device.
+
+(In app override profiles, Communications devices will be ignored.)
+
+
+{all_devices}
+will be considered as
+
+{unified_devices}"#,
+    );
+
+    type Mapper = fn(YesNoCancel) -> Option<FirstTimeChoice>;
+
+    let prompts: Vec<(String, Mapper)> = vec![
+        (
+            "Allow Redefaulter to check for updates once during startup?".to_string(),
+            |c| match c {
+                YesNoCancel::Yes => Some(FirstTimeChoice::UpdateCheckConsent(true)),
+                YesNoCancel::No => Some(FirstTimeChoice::UpdateCheckConsent(false)),
+                _ => None,
+            },
+        ),
+        (current_device_prompt, |c| match c {
+            YesNoCancel::Yes => Some(FirstTimeChoice::UseCurrentDefaults),
+            _ => None,
+        }),
+        // Make sure to wipe comm devices if yes
+        (unify_comms_prompt, |c| match c {
+            YesNoCancel::Yes => Some(FirstTimeChoice::PlatformChoice(
+                PlatformPrompts::UnifyCommunications(true),
+            )),
+            YesNoCancel::No => Some(FirstTimeChoice::PlatformChoice(
+                PlatformPrompts::UnifyCommunications(false),
+            )),
+            _ => None,
+        }),
+    ];
+    let prompts_count = prompts.len();
+    let text = format!(
+        "Perform first time setup for Redefaulter?\n\nOnly {prompts_count} quick questions.",
+    );
+
+    let title = format!("Redefaulter setup 0/{prompts_count}");
+    let response = win_msgbox::information::<YesNo>(&text)
+        .title(&title)
+        .show()
+        .unwrap();
+
+    match response {
+        YesNo::Yes => (),
+        YesNo::No => return,
+    }
+
+    for (index, (prompt, mapper)) in prompts.into_iter().enumerate() {
+        let title = format!("Redefaulter setup {}/{prompts_count}", index + 1);
+        let response = win_msgbox::information::<YesNoCancel>(&prompt)
+            .title(&title)
+            .show()
+            .unwrap();
+        match response {
+            YesNoCancel::Yes | YesNoCancel::No => {
+                if let Some(mapped) = mapper(response) {
+                    event_proxy.send_event(mapped.into()).unwrap();
+                }
+            }
+            YesNoCancel::Cancel => return,
+        };
+    }
 }

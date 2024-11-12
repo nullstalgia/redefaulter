@@ -6,8 +6,8 @@ use dashmap::DashMap;
 use fs_err::{self as fs};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::{collections::HashMap, sync::mpsc::Sender};
 use tracing::*;
 use wmi::*;
 
