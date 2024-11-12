@@ -21,7 +21,7 @@ use tray_icon::{Icon, TrayIcon, TrayIconEventReceiver};
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
-    popups::{first_time_popups, settings_load_failed_popup, FirstTimeChoice},
+    popups::{first_time_popups, profile_exists_popup, settings_load_failed_popup, FirstTimeChoice},
     processes::{self, LockFile},
     profiles::Profiles,
     settings::Settings,
@@ -35,6 +35,7 @@ pub enum CustomEvent {
     AudioEndpointNotification(AudioEndpointNotification),
     UpdateReply(UpdateReply),
     FirstTimeChoice(FirstTimeChoice),
+    NewProfile(PathBuf, bool),
     ReloadProfiles,
     ExitRequested,
 }
@@ -332,6 +333,14 @@ impl App {
             UpdateReply(reply) => {
                 debug!("Update Event: {reply:?}");
                 self.handle_update_reply(reply)?;
+            }
+            NewProfile(process_path, save_absolute_path) => {
+                if let Err(e) = self.profiles.new_profile(process_path, save_absolute_path) {
+                    profile_exists_popup(e);
+                    return Ok(());
+                };
+                self.update_active_profiles(false)?;
+                self.change_devices_if_needed()?;
             }
         }
         Ok(())

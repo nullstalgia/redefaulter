@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, collections::BTreeMap};
+use std::{borrow::BorrowMut, collections::BTreeMap, ffi::OsString};
 
 use muda::{CheckMenuItem, IsMenuItem, Submenu};
 use tao::event_loop::ControlFlow;
@@ -12,6 +12,7 @@ use crate::{
     app::App,
     errors::AppResult,
     platform::{ConfigDevice, DeviceRole, DiscoveredDevice},
+    popups::executable_file_picker,
     profiles::PROFILES_PATH,
     tray_menu::TrayDevice,
     updates::UpdateState,
@@ -22,6 +23,9 @@ pub mod common_ids {
     pub const QUIT_ID: &str = "quit";
     pub const RELOAD_ID: &str = "reload";
     pub const REVEAL_ID: &str = "reveal";
+
+    pub const NEW_SAVE_NAME: &str = "new-name";
+    pub const NEW_SAVE_PATH: &str = "new-path";
 
     pub const DEVICE_PREFIX: &str = "device";
 
@@ -114,6 +118,7 @@ impl App {
         }
 
         let total_profiles = self.profiles.len();
+        let active_profiles = self.profiles.active_len();
 
         if total_profiles == 0 {
             let text = "No Profiles Loaded!";
@@ -122,7 +127,8 @@ impl App {
             let text = format!("No Profiles Active ({total_profiles} loaded)");
             menu.append(&MenuItem::new(text, false, None))?;
         } else {
-            let item = MenuItem::new("Active Profiles:", false, None);
+            let text = format!("Active Profiles ({active_profiles}/{total_profiles}):");
+            let item = MenuItem::new(text, false, None);
             menu.append(&item)?;
             // Generate submenus to edit active profiles
             for (profile_name, profile) in self.profiles.get_active_profiles() {
@@ -295,6 +301,12 @@ impl App {
                 }
                 _ => error!("Invalid update menu command!"),
             },
+            NEW_SAVE_NAME => {
+                executable_file_picker(self.event_proxy.clone(), false);
+            }
+            NEW_SAVE_PATH => {
+                executable_file_picker(self.event_proxy.clone(), true);
+            }
             _ => (),
         }
         Ok(())
@@ -307,7 +319,7 @@ impl App {
             }
             DeviceSelectionType::Profile(profile) => self
                 .profiles
-                .get_mutable_profile(profile)
+                .get_mutable_profile(OsString::from(profile))
                 .unwrap()
                 .override_set
                 .borrow_mut(),
@@ -342,6 +354,22 @@ impl App {
     }
 
     fn append_root(&self, menu: &Menu) -> AppResult<()> {
+        let new_profile = SubmenuBuilder::new()
+            .enabled(true)
+            .text("New Profile")
+            .item(&MenuItem::with_id(
+                NEW_SAVE_NAME,
+                "Match by Process Name",
+                true,
+                None,
+            ))
+            .item(&MenuItem::with_id(
+                NEW_SAVE_PATH,
+                "Match by Full Path",
+                true,
+                None,
+            ))
+            .build()?;
         let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
         let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
         let settings_submenu = self.build_tray_settings_submenu()?;
@@ -349,6 +377,7 @@ impl App {
 
         menu.append_items(&[
             &PredefinedMenuItem::separator(),
+            &new_profile,
             &reload,
             &reveal,
             &PredefinedMenuItem::separator(),

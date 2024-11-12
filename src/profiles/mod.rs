@@ -80,28 +80,72 @@ impl Profiles {
     pub fn any_active(&self) -> bool {
         !self.active.is_empty()
     }
-    pub fn get_mutable_profile(&mut self, profile_name: &str) -> Option<&mut AppOverride> {
-        self.inner.get_mut(OsStr::new(profile_name))
+    pub fn get_mutable_profile<S: AsRef<OsStr>>(
+        &mut self,
+        profile_name: S,
+    ) -> Option<&mut AppOverride> {
+        self.inner.get_mut(profile_name.as_ref())
     }
     // pub fn get_profile(&self, profile_name: &str) -> Option<&AppOverride> {
     //     self.inner.get(OsStr::new(profile_name))
     // }
-    pub fn save_profile(&self, profile_name: &str) -> AppResult<()> {
-        let profile_os_str = OsString::from(profile_name);
-        let profile = self
-            .inner
-            .get(&profile_os_str)
-            .ok_or_else(|| RedefaulterError::ProfileNotFound(profile_name.to_owned()))?;
+    pub fn save_profile<S: AsRef<OsStr>>(&self, profile_name: S) -> AppResult<()> {
+        let profile = self.inner.get(profile_name.as_ref()).ok_or_else(|| {
+            RedefaulterError::ProfileNotFound(profile_name.as_ref().to_os_string())
+        })?;
 
         let profile_toml = toml::to_string(profile)?;
         let mut profile_path = PathBuf::from(PROFILES_PATH);
-        profile_path.push(profile_name);
+        profile_path.push(profile_name.as_ref());
         profile_path.set_extension("toml");
 
         let mut file = File::create(profile_path)?;
         file.write_all(profile_toml.as_bytes())?;
         file.flush()?;
         file.sync_all()?;
+
+        Ok(())
+    }
+    pub fn new_profile(
+        &mut self,
+        process_path: PathBuf,
+        save_absolute_path: bool,
+    ) -> AppResult<()> {
+        let Some(process_name) = process_path.file_name() else {
+            return Err(RedefaulterError::ProfileEmptyProcessPath(
+                process_path.into(),
+            ));
+        };
+        let Some(file_stem) = process_path.file_stem() else {
+            return Err(RedefaulterError::ProfileEmptyProcessPath(
+                process_path.into(),
+            ));
+        };
+
+        let new_profile_name = {
+            let mut name = OsString::from("99-");
+            name.push(file_stem);
+            name
+        };
+
+        if self.inner.contains_key(&new_profile_name) {
+            return Err(RedefaulterError::ProfileAlreadyExists(new_profile_name));
+        }
+
+        let output_path: PathBuf = if save_absolute_path {
+            process_path
+        } else {
+            process_name.into()
+        };
+
+        let new_override = AppOverride {
+            process_path: output_path,
+            ..Default::default()
+        };
+
+        self.inner.insert(new_profile_name.clone(), new_override);
+
+        self.save_profile(&new_profile_name)?;
 
         Ok(())
     }

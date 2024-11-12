@@ -39,8 +39,10 @@ pub enum RedefaulterError {
     FieldNotFound(#[from] menu_macro::MenuMacroError),
     #[error("Device not found: {0}")]
     DeviceNotFound(String),
-    #[error("Profile not found: {0}")]
-    ProfileNotFound(String),
+    #[error("Profile not found: {0:?}")]
+    ProfileNotFound(OsString),
+    #[error("Profile already exists: {0:?}")]
+    ProfileAlreadyExists(OsString),
     #[error("Failed to load profile {filename:?}\n{human_span}\n{reason}")]
     ProfileLoad {
         filename: OsString,

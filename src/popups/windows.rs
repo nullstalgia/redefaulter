@@ -56,6 +56,15 @@ pub fn profile_load_failed_popup(error: RedefaulterError, event_proxy: AppEventP
     });
 }
 
+pub fn profile_exists_popup(error: RedefaulterError) {
+    thread::spawn(move || {
+        win_msgbox::error::<Okay>(&format!("Error creating profile!\n{error}"))
+            .title("Redefaulter Error")
+            .show()
+            .expect("Couldn't show error popup!");
+    });
+}
+
 pub fn settings_load_failed_popup(error: RedefaulterError, lock_file: LockFile) -> ! {
     win_msgbox::error::<Okay>(&format!(
         "{error}\n\nPlease fix the settings file and try again."
