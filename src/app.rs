@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use auto_launch::AutoLaunch;
 use dashmap::DashMap;
 use muda::MenuEventReceiver;
 use takeable::Takeable;
@@ -21,7 +22,9 @@ use tray_icon::{Icon, TrayIcon, TrayIconEventReceiver};
 use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
-    popups::{first_time_popups, profile_exists_popup, settings_load_failed_popup, FirstTimeChoice},
+    popups::{
+        first_time_popups, profile_exists_popup, settings_load_failed_popup, FirstTimeChoice,
+    },
     processes::{self, LockFile},
     profiles::Profiles,
     settings::Settings,
@@ -61,6 +64,8 @@ pub struct App {
 
     pub updates: Takeable<UpdateHandle>,
     pub update_state: UpdateState,
+
+    pub auto_launch: Option<AutoLaunch>,
 
     // pub lock_file_path: PathBuf,
     pub settings: Settings,
@@ -142,6 +147,17 @@ impl App {
 
         let updates = UpdateHandle::new(event_proxy.clone());
 
+        let auto_launch = if let Some(path) = exe_path.to_str() {
+            auto_launch::AutoLaunchBuilder::new()
+                .set_app_name("redefaulter")
+                .set_app_path(path)
+                .build()
+                .ok()
+        } else {
+            warn!("Couldn't convert exe path to Unicode for Auto Launch! {exe_path:?}");
+            None
+        };
+
         Ok(Self {
             endpoints,
             profiles,
@@ -158,6 +174,7 @@ impl App {
             normal_icon: None,
             update_icon: None,
             updates: Takeable::new(updates),
+            auto_launch,
         })
     }
     /// Given a list of profiles, will return the roles that need to be changed to fit the active profiles.
@@ -229,7 +246,11 @@ impl App {
                     self.updates.query_latest();
                 }
                 if !self.settings.misc.first_time_setup_done {
-                    first_time_popups(self.current_defaults.clone(), self.event_proxy.clone());
+                    first_time_popups(
+                        self.current_defaults.clone(),
+                        self.event_proxy.clone(),
+                        self.auto_launch.is_some(),
+                    );
                 }
             }
             Event::UserEvent(event) => {
@@ -369,6 +390,13 @@ impl App {
                     self.updates.take();
                 }
             }
+            FirstTimeChoice::AutoLaunch(enabled) => {
+                if let Err(e) = self.set_auto_launch(enabled) {
+                    error!("{e}");
+                } else {
+                    self.update_tray_menu()?;
+                }
+            }
         }
         self.settings.save(&self.config_path)?;
         Ok(())
@@ -403,5 +431,24 @@ impl App {
         self.update_active_profiles(false)?;
         self.change_devices_if_needed()?;
         Ok(())
+    }
+    pub fn set_auto_launch(&self, enabled: bool) -> AppResult<()> {
+        if let Some(handle) = self.auto_launch.as_ref() {
+            if enabled {
+                handle.enable()?;
+            } else {
+                handle.disable()?;
+            }
+            Ok(())
+        } else {
+            Err(RedefaulterError::AutoLaunchInit)
+        }
+    }
+    pub fn get_auto_launch_enabled(&self) -> AppResult<bool> {
+        if let Some(handle) = self.auto_launch.as_ref() {
+            Ok(handle.is_enabled()?)
+        } else {
+            Err(RedefaulterError::AutoLaunchInit)
+        }
     }
 }

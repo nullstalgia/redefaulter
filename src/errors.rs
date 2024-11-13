@@ -34,9 +34,13 @@ pub enum RedefaulterError {
     Reqwest(#[from] reqwest::Error),
     #[error("Updater Error: {0}")]
     Updater(#[from] self_update::errors::Error),
+    #[error("Auto Launch: {0}")]
+    AutoLaunch(#[from] auto_launch::Error),
     // My errors
     #[error("Field not found: {0}")]
     FieldNotFound(#[from] menu_macro::MenuMacroError),
+    #[error("Auto Launch not initialized")]
+    AutoLaunchInit,
     #[error("ShadowPlay Error: {0}")]
     ShadowPlay(#[from] shadowplay::Error),
     #[error("Device not found: {0}")]

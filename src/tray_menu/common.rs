@@ -27,6 +27,8 @@ pub mod common_ids {
     pub const NEW_SAVE_NAME: &str = "new-name";
     pub const NEW_SAVE_PATH: &str = "new-path";
 
+    pub const AUTO_LAUNCH_ID: &str = "auto-launch";
+
     pub const DEVICE_PREFIX: &str = "device";
 
     pub const IGNORE_ID: &str = "ignore";
@@ -188,18 +190,40 @@ impl App {
         // And I can just chain them without any intermediary variables, so, fine.
 
         let settings_text = format!("Settings - v{}", env!("CARGO_PKG_VERSION"));
+
+        let mut extra_items: Vec<Box<dyn IsMenuItem>> = Vec::new();
+
+        let checked = match self.get_auto_launch_enabled() {
+            Ok(state) => state,
+            Err(e) => {
+                warn!("Error getting auto-launch state! Defaulting to false. {e}");
+                false
+            }
+        };
+        let auto_launch_item = CheckMenuItem::with_id(
+            AUTO_LAUNCH_ID,
+            "Open Redefaulter on Login",
+            true,
+            checked,
+            None,
+        );
+        extra_items.push(Box::new(auto_launch_item));
+
+        let extra_refs = extra_items.iter().map(|i| i.as_ref()).collect::<Vec<_>>();
+
         let submenu = SubmenuBuilder::new()
             .enabled(true)
             .text(settings_text)
             .items(
                 &self
                     .settings
-                    .platform
+                    .updates
                     .build_check_menu_items()
                     .iter()
                     .map(|item| item as &dyn IsMenuItem)
                     .collect::<Vec<_>>(),
             )
+            .items(&extra_refs)
             .items(
                 &self
                     .settings
@@ -212,7 +236,7 @@ impl App {
             .items(
                 &self
                     .settings
-                    .updates
+                    .platform
                     .build_check_menu_items()
                     .iter()
                     .map(|item| item as &dyn IsMenuItem)
@@ -307,6 +331,11 @@ impl App {
             NEW_SAVE_PATH => {
                 executable_file_picker(self.event_proxy.clone(), true);
             }
+            AUTO_LAUNCH_ID => {
+                let auto_launch_enabled = self.get_auto_launch_enabled()?;
+                self.set_auto_launch(!auto_launch_enabled)?;
+                self.update_tray_menu()?;
+            }
             _ => (),
         }
         Ok(())
@@ -356,16 +385,16 @@ impl App {
     fn append_root(&self, menu: &Menu) -> AppResult<()> {
         let new_profile = SubmenuBuilder::new()
             .enabled(true)
-            .text("New Profile")
+            .text("New Profile...")
             .item(&MenuItem::with_id(
                 NEW_SAVE_NAME,
-                "Match by Process Name",
+                "...with Process Name",
                 true,
                 None,
             ))
             .item(&MenuItem::with_id(
                 NEW_SAVE_PATH,
-                "Match by Full Path",
+                "...with Full Path",
                 true,
                 None,
             ))

@@ -47,6 +47,7 @@ tempfile = "3.14.0"
 reqwest = { version = "0.12.9", features = ["blocking"] }
 http = "1.1.0"
 rfd = "0.15.0"
+auto-launch = "0.5.0"
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [target.'cfg(windows)'.dependencies]

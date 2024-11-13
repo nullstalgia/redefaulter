@@ -7,6 +7,7 @@ use crate::app::{AppEventProxy, CustomEvent};
 
 #[derive(Debug)]
 pub enum FirstTimeChoice {
+    AutoLaunch(bool),
     UpdateCheckConsent(bool),
     UseCurrentDefaults,
     PlatformChoice(PlatformPrompts),

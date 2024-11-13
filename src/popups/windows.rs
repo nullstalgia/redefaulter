@@ -98,9 +98,13 @@ pub fn start_new_version_popup() {
         .expect("Couldn't show update complete popup");
 }
 
-pub fn first_time_popups(current_defaults: DeviceSet<Discovered>, event_proxy: AppEventProxy) {
+pub fn first_time_popups(
+    current_defaults: DeviceSet<Discovered>,
+    event_proxy: AppEventProxy,
+    auto_launch_init: bool,
+) {
     thread::spawn(move || {
-        first_time_impl(current_defaults, &event_proxy);
+        first_time_impl(current_defaults, &event_proxy, auto_launch_init);
         event_proxy
             .send_event(CustomEvent::FirstTimeChoice(FirstTimeChoice::SetupFinished))
             .unwrap();
@@ -133,7 +137,11 @@ fn format_devices(devices: &DeviceSet<Discovered>, unify_example: bool) -> Strin
     buffer
 }
 
-fn first_time_impl(current_defaults: DeviceSet<Discovered>, event_proxy: &AppEventProxy) {
+fn first_time_impl(
+    current_defaults: DeviceSet<Discovered>,
+    event_proxy: &AppEventProxy,
+    auto_launch_init: bool,
+) {
     let all_devices = format_devices(&current_defaults, false);
     let unified_devices = format_devices(&current_defaults, true);
 
@@ -153,7 +161,7 @@ Playback and Recording Communication devices always be forced to follow the Defa
 
     type Mapper = fn(YesNoCancel) -> Option<FirstTimeChoice>;
 
-    let prompts: Vec<(String, Mapper)> = vec![
+    let mut prompts: Vec<(String, Mapper)> = vec![
         (
             "Allow Redefaulter to check for updates once during startup?".to_string(),
             |c| match c {
@@ -194,6 +202,21 @@ Only {prompts_count} quick questions, and you can Cancel at any time."#,
     match response {
         YesNo::Yes => (),
         YesNo::No => return,
+    }
+
+    if auto_launch_init {
+        let auto_launch_prompt: Mapper = |c| match c {
+            YesNoCancel::Yes => Some(FirstTimeChoice::AutoLaunch(true)),
+            YesNoCancel::No => Some(FirstTimeChoice::AutoLaunch(false)),
+            _ => None,
+        };
+        prompts.insert(
+            0,
+            (
+                "Auto Launch Redefaulter on Login?".to_string(),
+                auto_launch_prompt,
+            ),
+        );
     }
 
     for (index, (prompt, mapper)) in prompts.into_iter().enumerate() {
