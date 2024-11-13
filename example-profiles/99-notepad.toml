@@ -1,10 +1,4 @@
-process = "notepad.exe"
-# process = "C:/Windows/System32/notepad.exe"
-#                       ^ --- May not work due to Windows reporting inconsistent casing for System Executables
-#                                  Your own executables _should_ work fine! (Let me know if not!)
-
-# You don't need to specify all devices in a profile!
-# Here, only the Recording devices are defined. And you could even leave out one of them.
+process = "C:/Windows/System32/notepad.exe"
 
 recording = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-098}"
 recording_comms = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-098}"

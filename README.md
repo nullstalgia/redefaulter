@@ -91,21 +91,3 @@ If you just want to stack sets of desired devices regardless of running apps, yo
 ```toml
 process = "*"
 ```
-
-### Warning for system executables!
-
-Windows will not always properly report the process' path, however.
-
-`notepad.exe` for example, will be reported as `C:/Windows/system32/notepad.exe` (Lowercase S!)
-
-But other apps in that same directory (like `smartscreen.exe`) will show up with their expected Uppercase S.
-
-> [!WARNING]
-> ```toml
-> process = "C:/Windows/System32/notepad.exe"
-> ```
-> May not work correctly!
-
-### ShadowPlay Support (Experimental!)
-
-When enabled, Redefaulter will try to keep the chosen recording device for NVIDIA's ShadowPlay feature the same as the Default Recording (not Recording Comms.) device.

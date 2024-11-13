@@ -150,7 +150,12 @@ pub fn process_event_loop(
                 let class = wbem_class_obj.class()?;
                 match class.as_str() {
                     "__InstanceCreationEvent" => {
-                        let process = wbem_class_obj.into_desr::<ProcessEvent>()?.target_instance;
+                        let mut process =
+                            wbem_class_obj.into_desr::<ProcessEvent>()?.target_instance;
+
+                        #[cfg(windows)]
+                        fix_system32_paths(&mut process);
+
                         trace!("New process: {process:?}");
                         process_map.insert(process.process_id, process);
                     }
@@ -170,6 +175,53 @@ pub fn process_event_loop(
     }
 
     Ok(())
+}
+
+#[cfg(windows)]
+/// Paths leading from `Disk:/Windows/System32` can sometimes have the capitalization goofed up by WMI.
+///
+/// (For example, returning `system32` instead of the properly-capitalized `System32`, which can mess with expected behavior).
+///
+/// This function checks for and repairs such paths.
+fn fix_system32_paths(input: &mut Process) {
+    use std::ffi::OsString;
+    use std::path::Prefix;
+
+    let Some(executable_path) = input.executable_path.as_mut() else {
+        return;
+    };
+
+    let mut comp = executable_path.components();
+
+    use std::path::Component::*;
+    // Getting the first four components, expecting: `[Disk, RootDir, "Windows", "System32"]`
+    if let (Some(Prefix(prefix)), Some(RootDir), Some(Normal(path1)), Some(Normal(path2))) =
+        (comp.next(), comp.next(), comp.next(), comp.next())
+    {
+        // Making sure we have *some* disk as the first component.
+        // I dunno, someone may have System32 not in `C:`
+        let Prefix::Disk(_) = prefix.kind() else {
+            return;
+        };
+        // Don't repair if it's already normal
+        if path1.eq("Windows") && path2.eq("System32") {
+            return;
+        }
+        // If it's not normal, then make sure it's even a System32 path
+        if !path1.to_ascii_lowercase().eq("windows") && !path2.to_ascii_lowercase().eq("system32") {
+            return;
+        }
+        let new_path: PathBuf = [
+            Prefix(prefix),
+            RootDir,
+            Normal(&OsString::from("Windows")),
+            Normal(&OsString::from("System32")),
+        ]
+        .into_iter()
+        .chain(comp)
+        .collect();
+        *executable_path = new_path;
+    }
 }
 
 pub struct LockFile {
