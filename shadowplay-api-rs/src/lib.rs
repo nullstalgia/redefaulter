@@ -1,3 +1,5 @@
+//! Based on the excellent work and information gathered by @cm-pony for [Experienceless](https://github.com/cm-pony/Experienceless/issues/1)
+
 use errors::ApiResult;
 use reqwest::{
     blocking::{Client, ClientBuilder},

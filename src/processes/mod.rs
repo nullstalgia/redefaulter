@@ -205,12 +205,12 @@ fn fix_system32_paths(input: &mut Process) {
         let Prefix::Disk(_) = prefix.kind() else {
             return;
         };
-        // Don't repair if it's already normal
-        if path1.eq("Windows") && path2.eq("System32") {
+        // Make sure it's even a System32 path
+        if !path1.to_ascii_lowercase().eq("windows") && !path2.to_ascii_lowercase().eq("system32") {
             return;
         }
-        // If it's not normal, then make sure it's even a System32 path
-        if !path1.to_ascii_lowercase().eq("windows") && !path2.to_ascii_lowercase().eq("system32") {
+        // Don't repair if it's already normal
+        if path1.eq("Windows") && path2.eq("System32") {
             return;
         }
         let new_path: PathBuf = [

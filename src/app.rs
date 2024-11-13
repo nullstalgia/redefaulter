@@ -430,6 +430,7 @@ impl App {
         };
         self.update_active_profiles(false)?;
         self.change_devices_if_needed()?;
+        self.update_tray_menu()?;
         Ok(())
     }
     pub fn set_auto_launch(&self, enabled: bool) -> AppResult<()> {

@@ -50,7 +50,7 @@ pub struct MiscSettings {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, MenuToggle, MenuId, TrayChecks)]
 pub struct AutoUpdateSettings {
-    /// Check for updates on startup
+    /// Check for Updates on Startup
     ///
     /// When true, allows the app to check for updates a single time when it launches.
     #[serde(default)]
@@ -62,13 +62,14 @@ pub struct AutoUpdateSettings {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
+    #[serde(rename = "redefaulter")]
     #[serde(default)]
     pub behavior: BehaviorSettings,
-    #[serde(default)]
-    pub misc: MiscSettings,
     #[serde(rename = "devices")]
     #[serde(default)]
     pub platform: PlatformSettings,
+    #[serde(default)]
+    pub misc: MiscSettings,
     #[serde(default)]
     pub updates: AutoUpdateSettings,
 }
