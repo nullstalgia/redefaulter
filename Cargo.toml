@@ -1,12 +1,15 @@
 [package]
 name = "redefaulter"
 repository = "https://github.com/nullstalgia/redefaulter"
-version = "0.1.0"
+version = "0.0.9"
 edition = "2021"
 
 [features]
+# default = ["self-replace"]
 # When active, ignores user dotfiles/AppData, using the current directory instead
 portable = []
+# When active, allows the executable to download updates and replace itself
+self-replace = ["dep:self-replace"]
 
 [dependencies]
 argh = "0.1.12"
@@ -42,7 +45,7 @@ muda = "0.15.2"
 serde_plain = "1.0.2"
 derivative = "2.2.0"
 sha2 = "0.10.8"
-self-replace = "1.5.0"
+self-replace = { version = "1.5.0", optional = true }
 tempfile = "3.14.0"
 reqwest = { version = "0.12.9", features = ["blocking"] }
 http = "1.1.0"

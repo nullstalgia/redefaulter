@@ -14,6 +14,7 @@ pub fn tray_update_submenu(version: &str) -> AppResult<Submenu> {
     // };
 
     let menu_items: Vec<MenuItem> = vec![
+        #[cfg(feature = "self-replace")]
         MenuItem::with_id(UPDATE_DOWNLOAD, "Download and Install", true, None),
         MenuItem::with_id(UPDATE_OPEN_REPO, "Open GitHub Repository", true, None),
         MenuItem::with_id(UPDATE_SKIP_VERSION, "Skip this Version", true, None),

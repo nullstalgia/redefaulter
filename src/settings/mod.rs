@@ -12,7 +12,9 @@ use tracing::*;
 use crate::errors::{AppResult, RedefaulterError};
 use crate::platform::PlatformSettings;
 
-// TODO Proper defaults.
+// TODO Cleaner defaults.
+// What I have now works and is predictable,
+// but there's a lot of gross repetition.
 
 #[derive(Debug, Clone, Serialize, Deserialize, MenuToggle, MenuId, TrayChecks, Derivative)]
 #[derivative(Default)]

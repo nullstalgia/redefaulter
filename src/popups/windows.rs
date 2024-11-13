@@ -90,7 +90,7 @@ pub fn fatal_error_popup(error: RedefaulterError, lock_file: Option<LockFile>) -
 
     std::process::exit(libc::EXIT_FAILURE);
 }
-
+#[cfg(feature = "self-replace")]
 pub fn start_new_version_popup() {
     win_msgbox::information::<Okay>("Update complete! Ready to launch new version!")
         .title("Redefaulter update success!")
@@ -184,6 +184,22 @@ Playback and Recording Communication devices always be forced to follow the Defa
             _ => None,
         }),
     ];
+
+    if auto_launch_init {
+        let auto_launch_prompt: Mapper = |c| match c {
+            YesNoCancel::Yes => Some(FirstTimeChoice::AutoLaunch(true)),
+            YesNoCancel::No => Some(FirstTimeChoice::AutoLaunch(false)),
+            _ => None,
+        };
+        prompts.insert(
+            0,
+            (
+                "Auto Launch Redefaulter on Login?".to_string(),
+                auto_launch_prompt,
+            ),
+        );
+    }
+
     let prompts_count = prompts.len();
     let text = format!(
         r#"Thanks for using Redefaulter! Most controls reside in the System Tray icon.
@@ -202,21 +218,6 @@ Only {prompts_count} quick questions, and you can Cancel at any time."#,
     match response {
         YesNo::Yes => (),
         YesNo::No => return,
-    }
-
-    if auto_launch_init {
-        let auto_launch_prompt: Mapper = |c| match c {
-            YesNoCancel::Yes => Some(FirstTimeChoice::AutoLaunch(true)),
-            YesNoCancel::No => Some(FirstTimeChoice::AutoLaunch(false)),
-            _ => None,
-        };
-        prompts.insert(
-            0,
-            (
-                "Auto Launch Redefaulter on Login?".to_string(),
-                auto_launch_prompt,
-            ),
-        );
     }
 
     for (index, (prompt, mapper)) in prompts.into_iter().enumerate() {

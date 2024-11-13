@@ -30,7 +30,7 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: redefaulter
-          # features: portable
+          features: self-replace
           target: ${{ matrix.target }}
           include: LICENSE,README.md,example-profiles
           # tar: unix
@@ -38,6 +38,7 @@ jobs:
           archive: $bin-$tag-$target
           token: ${{ secrets.GITHUB_TOKEN }}
           checksum: sha512
-      - uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: "**/*.tar.gz,**/*.zip"
+      # - uses: actions/attest-build-provenance@v1
+      #   with:
+      #     subject-path: "**/*.zip"
+      #     subject-path: "**/*.tar.gz,**/*.zip"

@@ -34,7 +34,10 @@ pub mod common_ids {
     pub const IGNORE_ID: &str = "ignore";
 
     pub const UPDATE_PREFIX: &str = "update";
+
+    #[cfg(feature = "self-replace")]
     pub const UPDATE_DOWNLOAD: &str = "update-download";
+
     pub const UPDATE_OPEN_REPO: &str = "update-repo";
     pub const UPDATE_DISMISS: &str = "update-dismiss";
     pub const UPDATE_SKIP_VERSION: &str = "update-skip";
@@ -78,11 +81,20 @@ impl App {
     }
     pub fn update_tray_menu(&self) -> AppResult<()> {
         if let Some(handle) = self.tray_menu.as_ref() {
-            let new_tooltip = format!(
-                "{} - {} profiles active",
-                TOOLTIP_PREFIX,
-                self.profiles.active_len()
-            );
+            let post_text = match &self.update_state {
+                UpdateState::Idle => {
+                    let active_len = self.profiles.active_len();
+                    if active_len == 1 {
+                        "1 profile active".to_string()
+                    } else {
+                        format!("{active_len} profiles active")
+                    }
+                }
+                UpdateState::UpdateFound(version) => format!("Update found! (v{version})"),
+                #[cfg(feature = "self-replace")]
+                UpdateState::Downloading => "Downloading update...".to_string(),
+            };
+            let new_tooltip = format!("{TOOLTIP_PREFIX} - {post_text}");
             handle.set_tooltip(Some(new_tooltip))?;
             let new_menu = self.build_tray_contents()?;
             handle.set_menu(Some(Box::new(new_menu)));
@@ -96,6 +108,7 @@ impl App {
 
         match &self.update_state {
             UpdateState::Idle => (),
+            #[cfg(feature = "self-replace")]
             UpdateState::Downloading => {
                 let downloading = label_item("Downloading update...");
                 menu.append(&downloading)?;
@@ -318,6 +331,7 @@ impl App {
                     let url = format!("{}/releases", env!("CARGO_PKG_REPOSITORY"));
                     opener::open_browser(url)?;
                 }
+                #[cfg(feature = "self-replace")]
                 UPDATE_DOWNLOAD => {
                     self.update_state = UpdateState::Downloading;
                     self.update_tray_menu()?;
@@ -402,7 +416,7 @@ impl App {
         let reload = MenuItem::with_id(RELOAD_ID, "&Reload Profiles", true, None);
         let reveal = MenuItem::with_id(REVEAL_ID, "Reveal Profiles &Folder", true, None);
         let settings_submenu = self.build_tray_settings_submenu()?;
-        let quit = MenuItem::with_id(QUIT_ID, "&Quit", true, None);
+        let quit = MenuItem::with_id(QUIT_ID, "&Quit Redefaulter", true, None);
 
         menu.append_items(&[
             &PredefinedMenuItem::separator(),

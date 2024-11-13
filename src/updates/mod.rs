@@ -1,33 +1,38 @@
-use std::env::consts::EXE_SUFFIX;
-use std::env::current_exe;
-use std::io::{BufReader, BufWriter, Read, Write};
-use std::path::PathBuf;
-
 use crate::app::{App, AppEventProxy, CustomEvent};
-use crate::errors::{AppResult, RedefaulterError};
-use crate::is_portable;
-use crate::popups::start_new_version_popup;
+use crate::errors::AppResult;
 
-use fs_err as fs;
-use http::HeaderMap;
 use self_update::cargo_crate_version;
 use self_update::get_target;
 use self_update::update::ReleaseAsset;
 use self_update::version::bump_is_greater;
-use sha2::{Digest, Sha512};
 use std::sync::mpsc::{self, Receiver};
 use tracing::*;
+
+#[cfg(feature = "self-replace")]
+use {
+    crate::errors::RedefaulterError,
+    crate::{is_portable, popups::start_new_version_popup},
+    fs_err as fs,
+    http::HeaderMap,
+    sha2::{Digest, Sha512},
+    std::env::{consts::EXE_SUFFIX, current_exe},
+    std::io::{BufReader, BufWriter, Read, Write},
+    std::path::PathBuf,
+};
 
 #[derive(Debug)]
 enum UpdateCommand {
     CheckForUpdate,
+    #[cfg(feature = "self-replace")]
     DownloadUpdate,
+    #[cfg(feature = "self-replace")]
     LaunchUpdatedApp,
 }
 #[derive(Debug)]
 pub enum UpdateState {
     Idle,
     UpdateFound(String),
+    #[cfg(feature = "self-replace")]
     Downloading,
     // ReadyToLaunch,
 }
@@ -35,11 +40,12 @@ pub enum UpdateState {
 pub enum UpdateReply {
     UpToDate,
     UpdateFound(String),
+    #[cfg(feature = "self-replace")]
+    ReadyToLaunch,
+    #[cfg(feature = "self-replace")]
+    Error(RedefaulterError),
     // Not used since each time we update the menu, it'd hide it
     // DownloadProgress(f64),
-    ReadyToLaunch,
-    Error(RedefaulterError),
-    // CheckError(RedefaulterError),
 }
 #[derive(Debug)]
 struct UpdateBackend {
@@ -47,6 +53,7 @@ struct UpdateBackend {
     event_proxy: AppEventProxy,
     archive_asset: Option<ReleaseAsset>,
     checksum_asset: Option<ReleaseAsset>,
+    #[cfg(feature = "self-replace")]
     current_exe: Option<PathBuf>,
 }
 impl UpdateBackend {
@@ -56,6 +63,7 @@ impl UpdateBackend {
             event_proxy,
             archive_asset: None,
             checksum_asset: None,
+            #[cfg(feature = "self-replace")]
             current_exe: None,
         }
     }
@@ -66,6 +74,7 @@ impl UpdateBackend {
                     error!("Failed checking for update! {e}");
                 }
             }
+            #[cfg(feature = "self-replace")]
             UpdateCommand::DownloadUpdate => match self.update_executable() {
                 Ok(()) => self
                     .event_proxy
@@ -77,6 +86,7 @@ impl UpdateBackend {
                     .send_event(CustomEvent::UpdateReply(UpdateReply::Error(e)))
                     .expect("Failed to send updater error"),
             },
+            #[cfg(feature = "self-replace")]
             UpdateCommand::LaunchUpdatedApp => match self.start_new_version() {
                 Ok(()) => {
                     unreachable!()
@@ -88,6 +98,7 @@ impl UpdateBackend {
             },
         }
     }
+    #[cfg(feature = "self-replace")]
     /// Streams the supplied URL's contents into the given File, checking the SHA512 hash of the archive with a supplied checksum by URL
     fn download_and_verify<T: Write + Unpin>(
         &self,
@@ -183,6 +194,7 @@ impl UpdateBackend {
             Err(RedefaulterError::BadChecksum)
         }
     }
+    #[cfg(feature = "self-replace")]
     /// This should never return, unless an error occurs.
     fn start_new_version(&mut self) -> AppResult<()> {
         let current_exe = self.current_exe.take().unwrap();
@@ -192,6 +204,7 @@ impl UpdateBackend {
 
         unreachable!()
     }
+    #[cfg(feature = "self-replace")]
     fn update_executable(&mut self) -> AppResult<()> {
         if !is_portable() {
             return Err(RedefaulterError::NotPortable);
@@ -325,12 +338,14 @@ impl UpdateHandle {
             .send(msg)
             .expect("Unable to start query for version");
     }
+    #[cfg(feature = "self-replace")]
     pub fn download_update(&self) {
         let msg = UpdateCommand::DownloadUpdate;
         self.command_tx
             .send(msg)
             .expect("Unable to start query for version");
     }
+    #[cfg(feature = "self-replace")]
     pub fn start_new_version(&self) {
         let msg = UpdateCommand::LaunchUpdatedApp;
         self.command_tx
@@ -342,11 +357,13 @@ impl UpdateHandle {
 // Yoinked from
 // https://github.com/lichess-org/fishnet/blob/eac238abbd77b7fc8cacd2d1f7c408252746e2f5/src/main.rs#L399
 
+#[cfg(feature = "self-replace")]
 fn restart_process(current_exe: PathBuf) -> std::io::Error {
     exec(std::process::Command::new(current_exe).args(std::env::args_os().skip(1)))
 }
 
 #[cfg(unix)]
+#[cfg(feature = "self-replace")]
 fn exec(command: &mut std::process::Command) -> std::io::Error {
     use std::os::unix::process::CommandExt as _;
     // Completely replace the current process image. If successful, execution
@@ -355,6 +372,7 @@ fn exec(command: &mut std::process::Command) -> std::io::Error {
 }
 
 #[cfg(windows)]
+#[cfg(feature = "self-replace")]
 fn exec(command: &mut std::process::Command) -> std::io::Error {
     use std::os::windows::process::CommandExt as _;
     // No equivalent for Unix exec() exists. So create a new independent
@@ -371,6 +389,7 @@ impl App {
     pub fn handle_update_reply(&mut self, reply: UpdateReply) -> AppResult<()> {
         use UpdateReply::*;
         match reply {
+            #[cfg(feature = "self-replace")]
             ReadyToLaunch => {
                 self.kill_tray_menu();
                 start_new_version_popup();
@@ -391,8 +410,9 @@ impl App {
                     }
                 }
             }
+            #[cfg(feature = "self-replace")]
             Error(e) => {
-                error!("Error during update! {e}");
+                error!("Error during self update! {e}");
                 _ = self.updates.take();
                 return Err(e);
             }
