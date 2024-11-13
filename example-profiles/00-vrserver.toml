@@ -1,4 +1,4 @@
-process_path = "vrserver.exe"
+process = "vrserver.exe"
 playback = "Speakers (Beyond Audio Strap)"
 recording = "Microphone (Beyond)"
 

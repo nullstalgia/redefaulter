@@ -1,6 +1,6 @@
-process_path = "notepad.exe"
-# process_path = "C:/Windows/System32/notepad.exe"
-#                            ^ --- May not work due to Windows reporting inconsistent casing for System Executables
+process = "notepad.exe"
+# process = "C:/Windows/System32/notepad.exe"
+#                       ^ --- May not work due to Windows reporting inconsistent casing for System Executables
 #                                  Your own executables _should_ work fine! (Let me know if not!)
 
 # You don't need to specify all devices in a profile!

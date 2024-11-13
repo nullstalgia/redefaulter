@@ -19,6 +19,7 @@ use crate::{
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppOverride {
+    #[serde(rename = "process")]
     pub process_path: PathBuf,
     #[serde(flatten)]
     pub override_set: DeviceSet<ConfigEntry>,

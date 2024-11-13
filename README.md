@@ -31,7 +31,7 @@ Example:
 Changes the default playback and recording device to the first found Bigscreen Beyond items when SteamVR's `vrserver` is running.
 
 ```toml
-process_path = "vrserver.exe"
+process = "vrserver.exe"
 playback = "Speakers (Beyond Audio Strap)"
 recording = "Microphone (Beyond)"
 ```
@@ -77,19 +77,19 @@ playback = "Speakers (3- Beyond Audio Strap)~{0.0.0.00000000}.{aa-bb-cc-123-456}
 Any instance of an application, regardless of executable's parent path:
 
 ```toml
-process_path = "vrserver.exe"
+process = "vrserver.exe"
 ```
 
 Any instance of an application, matching the given full path:
 
 ```toml
-process_path = "C:/Program Files (x86)/Steam/steam.exe"
+process = "C:/Program Files (x86)/Steam/steam.exe"
 ```
 
 If you just want to stack sets of desired devices regardless of running apps, you can set the process path to a single `*`, and it will always be active and follow the same priority rules.
 
 ```toml
-process_path = "*"
+process = "*"
 ```
 
 ### Warning for system executables!
@@ -102,7 +102,7 @@ But other apps in that same directory (like `smartscreen.exe`) will show up with
 
 > [!WARNING]
 > ```toml
-> process_path = "C:/Windows/System32/notepad.exe"
+> process = "C:/Windows/System32/notepad.exe"
 > ```
 > May not work correctly!
 

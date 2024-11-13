@@ -194,7 +194,7 @@ Playback and Recording Communication devices always be forced to follow the Defa
         prompts.insert(
             0,
             (
-                "Auto Launch Redefaulter on Login?".to_string(),
+                "Auto Launch Redefaulter on Login?\n\nMake sure to move the executable out of your Downloads folder!".to_string(),
                 auto_launch_prompt,
             ),
         );
