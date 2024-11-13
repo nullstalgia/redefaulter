@@ -87,7 +87,9 @@ pub fn process_event_loop(
     let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
 
     let initial_processes: Vec<Process> = wmi_con.query()?;
-    for process in initial_processes {
+    for mut process in initial_processes {
+        #[cfg(windows)]
+        fix_system32_paths(&mut process);
         process_map.insert(process.process_id, process);
     }
 

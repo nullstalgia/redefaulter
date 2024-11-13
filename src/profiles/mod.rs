@@ -176,7 +176,9 @@ impl Profiles {
                 }
                 if process.profile_matches(profile) {
                     active_profiles.insert(profile_name);
-                    break;
+                    // Not breaking loop to allow other profiles
+                    // to match on the process
+                    // break;
                 }
             }
         }

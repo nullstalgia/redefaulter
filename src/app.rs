@@ -186,14 +186,14 @@ impl App {
     pub fn get_damaged_devices(&self, only_config_default: bool) -> Option<DeviceSet<Discovered>> {
         let config_default_once = std::iter::once(&self.settings.platform.default_devices);
 
-        let active_overrides = self
+        let profile_overrides = self
             .profiles
             .get_active_override_sets()
             // Discard all active overrides if we're just shutting down
             // (There might be a nicer way to do this, but this is concise and doesn't have type mismatch issues)
-            .filter(|_| !only_config_default)
-            .chain(config_default_once)
-            .rev();
+            .filter(|_| !only_config_default);
+
+        let active_overrides = config_default_once.chain(profile_overrides);
 
         // TODO Consider a DeviceActions type with Options on the Strings/Devices?
         let mut device_actions = self.current_defaults.clone();
