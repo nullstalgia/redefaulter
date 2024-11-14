@@ -34,13 +34,13 @@ impl App {
 
         devices.push(Box::new(build_device(&Playback)));
 
-        if !self.settings.platform.unify_communications_devices {
+        if !self.settings.devices.platform.unify_communications_devices {
             devices.push(Box::new(build_device(&PlaybackComms)));
         }
 
         devices.push(Box::new(build_device(&Recording)));
 
-        if !self.settings.platform.unify_communications_devices {
+        if !self.settings.devices.platform.unify_communications_devices {
             devices.push(Box::new(build_device(&RecordingComms)));
         }
 
@@ -62,7 +62,7 @@ impl App {
             &device_set.playback,
         )?));
 
-        if !self.settings.platform.unify_communications_devices {
+        if !self.settings.devices.platform.unify_communications_devices {
             submenus.push(Box::new(self.tray_build_platform_device_selection(
                 destination,
                 &PlaybackComms,
@@ -76,7 +76,7 @@ impl App {
             &device_set.recording,
         )?));
 
-        if !self.settings.platform.unify_communications_devices {
+        if !self.settings.devices.platform.unify_communications_devices {
             submenus.push(Box::new(self.tray_build_platform_device_selection(
                 destination,
                 &RecordingComms,
@@ -101,7 +101,11 @@ impl App {
             Capture => &self.endpoints.recording_devices,
         };
 
-        let possibly_known_device = self.endpoints.try_find_device(&direction, current);
+        let possibly_known_device = self.endpoints.try_find_device(
+            &direction,
+            current,
+            self.settings.devices.fuzzy_match_names,
+        );
 
         let playback_device_checks = build_device_checks(
             all_devices,

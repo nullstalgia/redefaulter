@@ -121,7 +121,7 @@ impl App {
             }
         }
 
-        if self.settings.behavior.show_active_devices {
+        if self.settings.devices.show_active {
             let active_devices = self.tray_platform_active_devices()?;
             let item_refs = active_devices
                 .iter()
@@ -183,7 +183,7 @@ impl App {
         // Device selection for global default
         let profile_submenus = self.tray_platform_device_selection(
             &DeviceSelectionType::ConfigDefault,
-            &self.settings.platform.default_devices,
+            &self.settings.devices.platform.default_devices,
         )?;
         let submenu_refs = profile_submenus
             .iter()
@@ -240,7 +240,7 @@ impl App {
             .items(
                 &self
                     .settings
-                    .behavior
+                    .devices
                     .build_check_menu_items()
                     .iter()
                     .map(|item| item as &dyn IsMenuItem)
@@ -249,6 +249,7 @@ impl App {
             .items(
                 &self
                     .settings
+                    .devices
                     .platform
                     .build_check_menu_items()
                     .iter()
@@ -276,15 +277,19 @@ impl App {
             REVEAL_ID => {
                 opener::reveal(PROFILES_PATH)?;
             }
-            _ if id.starts_with(self.settings.platform.menu_id_root()) => {
-                self.settings.platform.handle_menu_toggle_event(id)?;
+            _ if id.starts_with(self.settings.devices.platform.menu_id_root()) => {
+                self.settings
+                    .devices
+                    .platform
+                    .handle_menu_toggle_event(id)?;
                 self.settings.save(&self.config_path)?;
-                self.endpoints.update_config(&self.settings.platform);
+                self.endpoints
+                    .update_config(&self.settings.devices.platform);
                 self.update_tray_menu()?;
                 // debug!("{:#?}", self.settings.platform);
             }
-            _ if id.starts_with(self.settings.behavior.menu_id_root()) => {
-                self.settings.behavior.handle_menu_toggle_event(id)?;
+            _ if id.starts_with(self.settings.devices.menu_id_root()) => {
+                self.settings.devices.handle_menu_toggle_event(id)?;
                 self.settings.save(&self.config_path)?;
                 self.update_tray_menu()?;
                 // debug!("{:#?}", self.settings.behavior);
@@ -358,7 +363,7 @@ impl App {
     fn handle_tray_device_selection(&mut self, tray_device: TrayDevice) -> AppResult<()> {
         let set_to_modify = match &tray_device.destination {
             DeviceSelectionType::ConfigDefault => {
-                self.settings.platform.default_devices.borrow_mut()
+                self.settings.devices.platform.default_devices.borrow_mut()
             }
             DeviceSelectionType::Profile(profile) => self
                 .profiles
@@ -374,7 +379,8 @@ impl App {
                     set_to_modify,
                     &tray_device.role,
                     guid,
-                    self.settings.behavior.always_save_generics,
+                    self.settings.devices.fuzzy_match_names,
+                    self.settings.devices.save_guid,
                 )?;
             }
             None => set_to_modify.clear_role(&tray_device.role),
@@ -433,11 +439,11 @@ impl App {
     }
 }
 pub fn build_device_checks(
-    devices: &BTreeMap<String, DiscoveredDevice>,
+    all_devices: &BTreeMap<String, DiscoveredDevice>,
     selection_type: &DeviceSelectionType,
     role: &DeviceRole,
-    config_device: &ConfigDevice,
-    discovered_device: Option<&DiscoveredDevice>,
+    current_device: &ConfigDevice,
+    current_as_discovered: Option<&DiscoveredDevice>,
 ) -> Vec<Box<dyn IsMenuItem>> {
     let mut items: Vec<Box<dyn IsMenuItem>> = Vec::new();
 
@@ -454,7 +460,7 @@ pub fn build_device_checks(
         none_item.to_string(),
         none_text,
         true,
-        config_device.is_empty(),
+        current_device.is_empty(),
         None,
     )));
 
@@ -462,11 +468,11 @@ pub fn build_device_checks(
 
     let mut device_found = false;
 
-    for device in devices.values() {
+    for device in all_devices.values() {
         let tray_device = TrayDevice::new(selection_type, role, &device.guid);
-        let chosen = if let Some(chosen) = discovered_device.as_ref() {
+        let chosen = if let Some(current) = current_as_discovered.as_ref() {
             device_found = true;
-            *chosen.guid == device.guid
+            *current.guid == device.guid
         } else {
             false
         };
@@ -480,12 +486,12 @@ pub fn build_device_checks(
     }
 
     // Checking if we have a device configured but wasn't in our list of known active devices
-    if !config_device.is_empty() && !device_found {
+    if !current_device.is_empty() && !device_found {
         items.push(Box::new(PredefinedMenuItem::separator()) as Box<dyn IsMenuItem>);
         // Giving this an ignore id, since if someone clicks it
         // it unchecks the listing in the tray, when instead the user
         // should be clicking the None item to clear the config entry.
-        let derived_name = format!("(Not Found) {config_device}");
+        let derived_name = format!("(Not Found) {current_device}");
         items.push(Box::new(CheckMenuItem::with_id(
             IGNORE_ID,
             &derived_name,

@@ -16,23 +16,27 @@ https://github.com/user-attachments/assets/1cf8cc42-9281-49fd-9198-d92609858934
 ## Config
 
 ```toml
-[redefaulter]
-always_save_generics = true
-
 [devices]
+fuzzy_match_names = true
+save_guid = true
 unify_communications_devices = true
 shadowplay_support = false
 
 [devices.default]
-playback = "Speakers (Gaming Headset)"
+playback = "Speakers (Gaming Headset)~{0.0.0.00000000}.{aa-bb-cc-123-456}"
 playback_comms = ""
-recording = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-789-098}"
+recording = "Microphone (3- Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-789-098}"
 recording_comms = ""
 ```
 
-- `always_save_generics` - When true, prefers to save devices as generically as possible. (like `playback`'s entry in the config above).
-  - Otherwise, saves more specific identifiers (like `recording`'s entry in the config above).
-  - Enabled by default, recommended to keep on unless you have multiple of the same device connected.
+- `fuzzy_match_names` - When true, prefers to save and match device names generically, **always** ignoring any numeric prefix added by Windows (like `playback`'s example entry in the config above).
+  - If disabled, saves and matches device names as-is (like `recording`'s entry).
+  - Enabled by default, recommended to keep on.
+
+- `save_guid` - When true, saves devices along with their OS-Given GUID (like both example entries above).
+  - If disabled, saves just the device's name.
+  - Enabled by default.
+  - Safe to disable if you __don't__ plan to have multiple of the same device connected.
 
 ### Windows-specific options
 
@@ -43,7 +47,9 @@ recording_comms = ""
 
 - `shadowplay_support` - When enabled, Redefaulter will try to keep the chosen recording device for NVIDIA's ShadowPlay feature the same as the Default Recording[^1] device.
 
-[^1]: (not Recording Comms)
+<sup>Because ShadowPlay doesn't have a "Use Windows' Default Device" option for whatever reason.</sup>
+
+[^1]: Not the Recording Communications device.
 
 ## Profiles
 
@@ -68,30 +74,24 @@ recording = "Microphone (Beyond)"
 
 ### Audio Device matching
 
-In order of most to least generic:
+#### In order of most to least generic:
 
-Find any device with this name (regardless of numeric prefix added by Windows):
+Find any device with this name:
 
 ```toml
 playback = "Speakers (Beyond Audio Strap)"
 ```
 
-Find device with this GUID, if not, any device matching the name, regardless of prefix:
-
-```toml
-playback = "Speakers (Beyond Audio Strap)~{0.0.0.00000000}.{aa-bb-cc-123-456}"
-```
-
-Find any device with this name (will not ignore prefix):
-
 ```toml
 playback = "Speakers (3- Beyond Audio Strap)"
 ```
 
-Find device with this name (with prefix) or GUID:
+<sup>Enable `devices.fuzzy_match_names` to ignore numeric prefixes!</sup>
+
+Find device with this GUID, if not found, try to find device by name:
 
 ```toml
-playback = "Speakers (3- Beyond Audio Strap)~{0.0.0.00000000}.{aa-bb-cc-123-456}"
+playback = "Speakers (Beyond Audio Strap)~{0.0.0.00000000}.{aa-bb-cc-123-456}"
 ```
 
 Find device with this GUID, regardless of name:
@@ -128,6 +128,4 @@ If you just want to stack sets of desired devices regardless of running apps, yo
 process = "*"
 ```
 
-# CLI Args
-
-### Under Construction
+# CLI Args (Under Construction)

@@ -47,10 +47,8 @@ pub struct AudioNightmare {
     pub playback_devices: BTreeMap<String, DiscoveredDevice>,
     /// Existing devices attached to the host
     pub recording_devices: BTreeMap<String, DiscoveredDevice>,
-    /// Regex for fuzzy-matching devices with numeric prefixes
-    regex_finding: Regex,
-    /// Regex for removing numeric prefixes from devices to allow for fuzzy-matching later
-    regex_replacing: Regex,
+    /// Regex to help with fuzzy-matching against devices with numeric prefixes
+    regex_windows_numeric_prefix: Regex,
     /// Used to tell `App` that something has changed
     event_proxy: Option<AppEventProxy>,
     /// When `true`, *all* actions taken towards the Console/Multimedia Role
@@ -121,11 +119,11 @@ impl AudioNightmare {
             device_callbacks = Some(client);
         }
 
-        // This regex matches an opening parenthesis '(', followed by one or more digits '\d+',
-        // a dash '-', a space ' ', and captures the rest of the string '(.+?)' until the closing parenthesis.
-        let regex_finding = Regex::new(r"\(\d+- (.+?)\)").expect("Regex failed to build");
-
-        let regex_replacing = Regex::new(r"\((\d+)-\s*(.+?)\)").expect("Regex failed to build");
+        // This regex matches numeric prefix patterns in the form of ' (#- ',
+        // which are used as prefixes by Windows for differentiating device instances.
+        // The regex's goal is to match to these prefixes so they
+        // can be ignored/removed during fuzzy device matching/saving.
+        let regex_windows_numeric_prefix = Regex::new(r" \(\d+- ").expect("Regex failed to build");
 
         let unify_communications_devices = config.unify_communications_devices;
 
@@ -148,8 +146,7 @@ impl AudioNightmare {
             // callback_rx: rx,
             playback_devices,
             recording_devices,
-            regex_finding,
-            regex_replacing,
+            regex_windows_numeric_prefix,
             event_proxy,
             unify_communications_devices,
             shadowplay,
@@ -304,12 +301,8 @@ impl AudioNightmare {
         }
         Ok(())
     }
-    /// Gets device by name,
-    /// if no numeric prefix (e.g. `3- `) is supplied in the name,
-    /// will return first device that matches regardless of prefix
-    ///
-    /// If one is supplied, will match for that name specifically
-    pub fn device_by_name_fuzzy<'a>(
+    /// Gets device by name, strict matching
+    fn device_by_name<'a>(
         &'a self,
         direction: &Direction,
         name: &str,
@@ -318,13 +311,34 @@ impl AudioNightmare {
             return None;
         }
         let find = |map: &'a BTreeMap<String, DiscoveredDevice>| -> Option<&'a DiscoveredDevice> {
-            for device in map.values() {
-                let simplified_name = self.regex_finding.replace(&device.human_name, "($1)");
-                if name == device.human_name || name == simplified_name {
-                    return Some(device);
-                }
-            }
-            None
+            map.values().find(|d| d.human_name == name)
+        };
+        match direction {
+            Direction::Render => find(&self.playback_devices),
+            Direction::Capture => find(&self.recording_devices),
+        }
+    }
+    /// Gets device by name fuzzily.
+    ///
+    /// Searches in the specified set of devices,
+    /// returning the first device that matches,
+    /// ignoring numeric prefixes in desired device name or discovered device names.
+    fn device_by_name_fuzzy<'a>(
+        &'a self,
+        direction: &Direction,
+        name: &str,
+    ) -> Option<&'a DiscoveredDevice> {
+        if name.is_empty() {
+            return None;
+        }
+        let desired_normalized = self.regex_windows_numeric_prefix.replace(name, " (");
+        let find = |map: &'a BTreeMap<String, DiscoveredDevice>| -> Option<&'a DiscoveredDevice> {
+            map.values().find(|d| {
+                desired_normalized
+                    == self
+                        .regex_windows_numeric_prefix
+                        .replace(&d.human_name, " (")
+            })
         };
         match direction {
             Direction::Render => find(&self.playback_devices),
@@ -377,9 +391,15 @@ impl AudioNightmare {
         &self,
         direction: &Direction,
         needle: &ConfigDevice,
+        fuzzy_match_names: bool,
     ) -> Option<&DiscoveredDevice> {
-        self.device_by_guid(direction, &needle.guid)
-            .or_else(|| self.device_by_name_fuzzy(direction, &needle.human_name))
+        self.device_by_guid(direction, &needle.guid).or_else(|| {
+            if fuzzy_match_names {
+                self.device_by_name_fuzzy(direction, &needle.human_name)
+            } else {
+                self.device_by_name(direction, &needle.human_name)
+            }
+        })
     }
     /// Given an input of desired devices from an active profile,
     /// search our lists of known connected and active devices,
@@ -389,11 +409,12 @@ impl AudioNightmare {
         &self,
         actions: &mut DeviceSet<Discovered>,
         desired: &DeviceSet<ConfigEntry>,
+        fuzzy_match_names: bool,
     ) {
         use wasapi::Direction::*;
         let update_device =
             |direction: &Direction, actions: &mut DiscoveredDevice, desired: &ConfigDevice| {
-                if let Some(device) = self.try_find_device(direction, desired) {
+                if let Some(device) = self.try_find_device(direction, desired, fuzzy_match_names) {
                     *actions = device.clone();
                 }
             };
@@ -480,14 +501,16 @@ impl AudioNightmare {
         &self,
         dest: &mut DeviceSet<ConfigEntry>,
         source: &DeviceSet<Discovered>,
-        make_fuzzy_name: bool,
+        save_fuzzy_name: bool,
+        save_guid: bool,
     ) {
         use DeviceRole::*;
         let roles = [Playback, PlaybackComms, Recording, RecordingComms];
 
         for role in roles {
             let real_device = source.get_role(&role);
-            let config_device = self.device_to_config_entry(real_device, make_fuzzy_name);
+            let config_device =
+                self.device_to_config_entry(real_device, save_fuzzy_name, save_guid);
             dest.update_role(&role, config_device);
         }
     }
@@ -496,13 +519,14 @@ impl AudioNightmare {
         entry: &mut DeviceSet<ConfigEntry>,
         role: &DeviceRole,
         guid: &str,
-        make_fuzzy_name: bool,
+        save_fuzzy_name: bool,
+        save_guid: bool,
     ) -> AppResult<()> {
         let real_device = self
             .device_by_guid(&role.into(), guid)
             .ok_or_else(|| RedefaulterError::DeviceNotFound(guid.to_string()))?;
 
-        let new_device = self.device_to_config_entry(real_device, make_fuzzy_name);
+        let new_device = self.device_to_config_entry(real_device, save_fuzzy_name, save_guid);
         entry.update_role(role, new_device);
 
         Ok(())
@@ -513,18 +537,21 @@ impl AudioNightmare {
     pub fn device_to_config_entry(
         &self,
         discovered: &WindowsAudioDevice<Discovered>,
-        make_fuzzy_name: bool,
+        save_fuzzy_name: bool,
+        save_guid: bool,
     ) -> WindowsAudioDevice<ConfigEntry> {
-        let (human_name, guid) = {
-            if make_fuzzy_name {
-                let fuzzy_name = self
-                    .regex_replacing
-                    .replace_all(&discovered.human_name, "($2)");
+        let human_name = if save_fuzzy_name {
+            self.regex_windows_numeric_prefix
+                .replace(&discovered.human_name, " (")
+                .to_string()
+        } else {
+            discovered.human_name.to_owned()
+        };
 
-                (fuzzy_name.to_string(), String::new())
-            } else {
-                (discovered.human_name.to_owned(), discovered.guid.to_owned())
-            }
+        let guid = if save_guid {
+            discovered.guid.to_owned()
+        } else {
+            String::new()
         };
 
         WindowsAudioDevice::new(human_name, guid)

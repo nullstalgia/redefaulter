@@ -133,7 +133,8 @@ impl App {
             }
         };
 
-        let endpoints = AudioNightmare::build(Some(event_proxy.clone()), Some(&settings.platform))?;
+        let endpoints =
+            AudioNightmare::build(Some(event_proxy.clone()), Some(&settings.devices.platform))?;
 
         // let config_defaults = settings.platform.default_devices.clone();
 
@@ -184,7 +185,7 @@ impl App {
     ///
     /// Returns None if the resulting devices are the same as the current de.
     pub fn get_damaged_devices(&self, only_config_default: bool) -> Option<DeviceSet<Discovered>> {
-        let config_default_once = std::iter::once(&self.settings.platform.default_devices);
+        let config_default_once = std::iter::once(&self.settings.devices.platform.default_devices);
 
         let profile_overrides = self
             .profiles
@@ -199,8 +200,11 @@ impl App {
         let mut device_actions = self.current_defaults.clone();
 
         for profile in active_overrides {
-            self.endpoints
-                .overlay_available_devices(&mut device_actions, profile);
+            self.endpoints.overlay_available_devices(
+                &mut device_actions,
+                profile,
+                self.settings.devices.fuzzy_match_names,
+            );
         }
 
         // Clears device actions for roles that're already properly set
@@ -376,9 +380,10 @@ impl App {
             }
             FirstTimeChoice::UseCurrentDefaults => {
                 self.endpoints.copy_all_roles(
-                    &mut self.settings.platform.default_devices,
+                    &mut self.settings.devices.platform.default_devices,
                     &self.current_defaults,
-                    self.settings.behavior.always_save_generics,
+                    self.settings.devices.fuzzy_match_names,
+                    self.settings.devices.save_guid,
                 );
             }
             FirstTimeChoice::UpdateCheckConsent(consent) => {

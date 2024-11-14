@@ -1,6 +1,12 @@
-process = "C:/Windows/System32/notepad.exe"
+process = "C:\\Windows\\System32\\notepad.exe"
+
+# process = 'C:\Windows\System32\notepad.exe'
+# Unescaped backslashes are allowed in single-quote (literal) strings!
+
+# process = "C:/Windows/System32/notepad.exe"
+# Redefaulter also handles both slash directions.
 
 # You don't need to specify all devices in a profile!
-# Here, only the Recording devices are defined. And you could even leave out one of them.
+# In this example profile, only the Recording devices are defined. And you could even leave out one of them.
 recording = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-098}"
 recording_comms = "Microphone (Gaming Headset)~{0.0.1.00000000}.{xx-yy-zz-123-098}"

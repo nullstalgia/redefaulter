@@ -1,5 +1,5 @@
 use std::thread;
-use win_msgbox::{Okay, RetryCancel, YesNo, YesNoCancel};
+use win_msgbox::{Okay, RetryCancel, YesNoCancel};
 
 use crate::{
     app::{App, AppEventProxy, CustomEvent},
@@ -19,13 +19,15 @@ impl App {
     pub fn handle_platform_first_time_choice(&mut self, choice: PlatformPrompts) -> AppResult<()> {
         match choice {
             PlatformPrompts::UnifyCommunications(unify) => {
-                self.settings.platform.unify_communications_devices = unify;
+                self.settings.devices.platform.unify_communications_devices = unify;
                 if unify {
                     self.settings
+                        .devices
                         .platform
                         .default_devices
                         .clear_role(&DeviceRole::PlaybackComms);
                     self.settings
+                        .devices
                         .platform
                         .default_devices
                         .clear_role(&DeviceRole::RecordingComms);
@@ -104,10 +106,15 @@ pub fn first_time_popups(
     auto_launch_init: bool,
 ) {
     thread::spawn(move || {
-        first_time_impl(current_defaults, &event_proxy, auto_launch_init);
-        event_proxy
-            .send_event(CustomEvent::FirstTimeChoice(FirstTimeChoice::SetupFinished))
-            .unwrap();
+        let setup_finished = first_time_impl(current_defaults, &event_proxy, auto_launch_init);
+
+        if setup_finished {
+            event_proxy
+                .send_event(CustomEvent::FirstTimeChoice(FirstTimeChoice::SetupFinished))
+                .unwrap();
+        } else {
+            event_proxy.send_event(CustomEvent::ExitRequested).unwrap();
+        }
     });
 }
 
@@ -141,7 +148,7 @@ fn first_time_impl(
     current_defaults: DeviceSet<Discovered>,
     event_proxy: &AppEventProxy,
     auto_launch_init: bool,
-) {
+) -> bool {
     let all_devices = format_devices(&current_defaults, false);
     let unified_devices = format_devices(&current_defaults, true);
 
@@ -194,7 +201,7 @@ Playback and Recording Communication devices always be forced to follow the Defa
         prompts.insert(
             0,
             (
-                "Auto Launch Redefaulter on Login?\n\nMake sure to move the executable out of your Downloads folder!".to_string(),
+                "Auto Launch Redefaulter on Login?".to_string(),
                 auto_launch_prompt,
             ),
         );
@@ -202,22 +209,31 @@ Playback and Recording Communication devices always be forced to follow the Defa
 
     let prompts_count = prompts.len();
     let text = format!(
-        r#"Thanks for using Redefaulter! Most controls reside in the System Tray icon.
+        r#"Thanks for using Redefaulter!
+
+Most controls reside in the System Tray icon.
 
 Would you like to perform first time setup for Redefaulter?
 
-Only {prompts_count} quick questions, and you can Cancel at any time."#,
+Only {prompts_count} quick questions, and you can Cancel at any time.
+
+It's recommended to move the executable out of your Downloads folder first!
+
+You can select Cancel now to Quit Redefaulter and do setup next time."#
     );
 
     let title = format!("Redefaulter setup 0/{prompts_count}");
-    let response = win_msgbox::information::<YesNo>(&text)
+    let response = win_msgbox::information::<YesNoCancel>(&text)
         .title(&title)
         .show()
         .unwrap();
 
     match response {
-        YesNo::Yes => (),
-        YesNo::No => return,
+        YesNoCancel::Yes => (),
+        // User chose to skip first time setup
+        YesNoCancel::No => return true,
+        // User chose to quit app and do setup next lauch
+        YesNoCancel::Cancel => return false,
     }
 
     for (index, (prompt, mapper)) in prompts.into_iter().enumerate() {
@@ -232,7 +248,11 @@ Only {prompts_count} quick questions, and you can Cancel at any time."#,
                     event_proxy.send_event(mapped.into()).unwrap();
                 }
             }
-            YesNoCancel::Cancel => return,
+            // User chose to skip rest of first time setup
+            YesNoCancel::Cancel => return true,
         };
     }
+
+    // User finished first time setup
+    true
 }
