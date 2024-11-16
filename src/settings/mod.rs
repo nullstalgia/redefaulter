@@ -60,6 +60,20 @@ pub struct DeviceSettings {
 }
 
 #[serde_inline_default]
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative, MenuToggle, MenuId, TrayChecks)]
+#[derivative(Default)]
+pub struct ProfileSettings {
+    /// Hide Inactive Profiles
+    ///
+    /// When true, won't show items for inactive profiles.
+    ///
+    /// Enabled by default to reduce visual clutter.
+    #[serde_inline_default(true)]
+    #[derivative(Default(value = "true"))]
+    pub hide_inactive: bool,
+}
+
+#[serde_inline_default]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
 pub struct MiscSettings {
@@ -86,6 +100,8 @@ pub struct AutoUpdateSettings {
 pub struct Settings {
     #[serde(default)]
     pub devices: DeviceSettings,
+    #[serde(default)]
+    pub profiles: ProfileSettings,
     #[serde(default)]
     pub misc: MiscSettings,
     #[serde(default)]

@@ -48,7 +48,6 @@ impl App {
     }
     pub fn tray_platform_device_selection(
         &self,
-        // profile_name_str: &str,
         destination: &DeviceSelectionType,
         device_set: &DeviceSet<ConfigEntry>,
     ) -> AppResult<Vec<Box<dyn IsMenuItem>>> {

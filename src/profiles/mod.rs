@@ -78,9 +78,9 @@ impl Profiles {
     pub fn active_len(&self) -> usize {
         self.active.len()
     }
-    pub fn any_active(&self) -> bool {
-        !self.active.is_empty()
-    }
+    // pub fn none_active(&self) -> bool {
+    //     self.active.is_empty()
+    // }
     pub fn get_mutable_profile<S: AsRef<OsStr>>(
         &mut self,
         profile_name: S,
@@ -197,17 +197,28 @@ impl Profiles {
     }
     // Unwraps should be fine here, I want it to panic anyway if we try
     // to get a profile that doesn't exist anymore.
-    pub fn get_active_override_sets(
+    pub fn iter_active_override_sets(
         &self,
     ) -> impl DoubleEndedIterator<Item = &DeviceSet<ConfigEntry>> {
         self.active
             .iter()
             .map(|p| &self.inner.get(p).unwrap().override_set)
     }
-    pub fn get_active_profiles(
+    pub fn iter_active_profiles(
         &self,
     ) -> impl DoubleEndedIterator<Item = (&OsString, &AppOverride)> {
         self.active.iter().map(|p| (p, self.inner.get(p).unwrap()))
+    }
+    pub fn iter_inactive_profiles(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&OsString, &AppOverride)> {
+        self.inner.iter().filter_map(|(k, v)| {
+            if self.active.contains(k) {
+                None
+            } else {
+                Some((k, v))
+            }
+        })
     }
 }
 

@@ -13,7 +13,7 @@ use crate::{
     errors::AppResult,
     platform::{ConfigDevice, DeviceRole, DiscoveredDevice},
     popups::executable_file_picker,
-    profiles::PROFILES_PATH,
+    profiles::{AppOverride, PROFILES_PATH},
     tray_menu::TrayDevice,
     updates::UpdateState,
 };
@@ -134,47 +134,29 @@ impl App {
 
         let total_profiles = self.profiles.len();
         let active_profiles = self.profiles.active_len();
+        let inactive_profiles = total_profiles - active_profiles;
 
         if total_profiles == 0 {
             let text = "No Profiles Loaded!";
             menu.append(&MenuItem::new(text, false, None))?;
-        } else if !self.profiles.any_active() {
-            let text = format!("No Profiles Active ({total_profiles} loaded)");
-            menu.append(&MenuItem::new(text, false, None))?;
         } else {
-            let text = format!("Active Profiles ({active_profiles}/{total_profiles}):");
-            let item = MenuItem::new(text, false, None);
-            menu.append(&item)?;
-            // Generate submenus to edit active profiles
-            for (profile_name, profile) in self.profiles.get_active_profiles() {
-                let Some(profile_name_str) = profile_name.to_str() else {
-                    let incomplete_item = SubmenuBuilder::new()
-                        .enabled(true)
-                        .text("Invalid UTF-8 Filename!")
-                        .build()?;
-                    menu.append(&incomplete_item)?;
-                    continue;
-                    // TODO: Opener::reveal the item?
-                    // Except I can't put the filename in the ID without losing content....
-                    // I could maybe represent *all* OsStrings destined to be
-                    // sent into the menu_id's &str as hex bytes/base64 or something,
-                    // but I'd rather just wait for someone to ask for it than spend a lot
-                    // of time on it right now.
-                };
-                let profile_submenus = self.tray_platform_device_selection(
-                    &DeviceSelectionType::Profile(profile_name_str),
-                    &profile.override_set,
-                )?;
-                let submenu_refs = profile_submenus
-                    .iter()
-                    .map(|s| s.as_ref())
-                    .collect::<Vec<_>>();
-                let item = SubmenuBuilder::new()
-                    .enabled(true)
-                    .items(&submenu_refs)
-                    .text(profile_name_str)
-                    .build()?;
+            // Profile iters are reversed to try to visually
+            // represent each profile's priority
+            if active_profiles > 0 {
+                let text = format!("Active Profiles ({active_profiles}/{total_profiles}):");
+                let item = MenuItem::new(text, false, None);
                 menu.append(&item)?;
+                self.append_profiles(self.profiles.iter_active_profiles().rev(), &menu)?;
+            }
+            if inactive_profiles == total_profiles && self.settings.profiles.hide_inactive {
+                let text = format!("No Profiles Active ({total_profiles} loaded)");
+                menu.append(&MenuItem::new(text, false, None))?;
+            } else if inactive_profiles > 0 && !self.settings.profiles.hide_inactive {
+                // menu.append(&PredefinedMenuItem::separator())?;
+                let text = format!("Inactive Profiles ({inactive_profiles}/{total_profiles}):");
+                let item = MenuItem::new(text, false, None);
+                menu.append(&item)?;
+                self.append_profiles(self.profiles.iter_inactive_profiles().rev(), &menu)?;
             }
         }
 
@@ -194,6 +176,44 @@ impl App {
         self.append_root(&menu)?;
 
         Ok(menu)
+    }
+    /// Generates and appends submenus to edit and view profiles
+    fn append_profiles<'a, I: DoubleEndedIterator<Item = (&'a OsString, &'a AppOverride)>>(
+        &'a self,
+        profiles: I,
+        menu: &Menu,
+    ) -> AppResult<()> {
+        for (profile_name, profile) in profiles {
+            let Some(profile_name_str) = profile_name.to_str() else {
+                let incomplete_item = SubmenuBuilder::new()
+                    .enabled(true)
+                    .text("Invalid UTF-8 Filename!")
+                    .build()?;
+                menu.append(&incomplete_item)?;
+                continue;
+                // TODO: Opener::reveal the item?
+                // Except I can't put the filename in the ID without losing content....
+                // I could maybe represent *all* OsStrings destined to be
+                // sent into the menu_id's &str as hex bytes/base64 or something,
+                // but I'd rather just wait for someone to ask for it than spend a lot
+                // of time on it right now.
+            };
+            let profile_submenus = self.tray_platform_device_selection(
+                &DeviceSelectionType::Profile(profile_name_str),
+                &profile.override_set,
+            )?;
+            let submenu_refs = profile_submenus
+                .iter()
+                .map(|s| s.as_ref())
+                .collect::<Vec<_>>();
+            let item = SubmenuBuilder::new()
+                .enabled(true)
+                .items(&submenu_refs)
+                .text(profile_name_str)
+                .build()?;
+            menu.append(&item)?;
+        }
+        Ok(())
     }
     fn build_tray_settings_submenu(&self) -> AppResult<Submenu> {
         // This a little cursed, but it's the best solution I can think of currently.
@@ -237,6 +257,15 @@ impl App {
                     .collect::<Vec<_>>(),
             )
             .items(&extra_refs)
+            .items(
+                &self
+                    .settings
+                    .profiles
+                    .build_check_menu_items()
+                    .iter()
+                    .map(|item| item as &dyn IsMenuItem)
+                    .collect::<Vec<_>>(),
+            )
             .items(
                 &self
                     .settings
@@ -288,11 +317,15 @@ impl App {
                 self.update_tray_menu()?;
                 // debug!("{:#?}", self.settings.platform);
             }
+            _ if id.starts_with(self.settings.profiles.menu_id_root()) => {
+                self.settings.profiles.handle_menu_toggle_event(id)?;
+                self.settings.save(&self.config_path)?;
+                self.update_tray_menu()?;
+            }
             _ if id.starts_with(self.settings.devices.menu_id_root()) => {
                 self.settings.devices.handle_menu_toggle_event(id)?;
                 self.settings.save(&self.config_path)?;
                 self.update_tray_menu()?;
-                // debug!("{:#?}", self.settings.behavior);
             }
             IGNORE_ID => {
                 // Rebuilding menu here since if the user clicked a CheckItem,

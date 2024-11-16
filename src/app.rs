@@ -189,7 +189,7 @@ impl App {
 
         let profile_overrides = self
             .profiles
-            .get_active_override_sets()
+            .iter_active_override_sets()
             // Discard all active overrides if we're just shutting down
             // (There might be a nicer way to do this, but this is concise and doesn't have type mismatch issues)
             .filter(|_| !only_config_default);
