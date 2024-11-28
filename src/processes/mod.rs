@@ -112,9 +112,11 @@ pub fn process_event_loop(
             .parse::<u32>()
             .map_err(|_| RedefaulterError::ParseLockFile)?;
 
-        let already_running = process_map.iter().any(|p| p.process_id == pid);
+        let matches_our_pid = pid == std::process::id();
+        let another_instance_running =
+            !matches_our_pid && process_map.iter().any(|p| p.process_id == pid);
 
-        if already_running {
+        if another_instance_running {
             None
         } else {
             Some(LockFile::build(&lock_file_path)?)
@@ -123,6 +125,7 @@ pub fn process_event_loop(
         Some(LockFile::build(&lock_file_path)?)
     };
 
+    // If we didn't make our own lock file, we shouldn't keep running.
     let instance_already_exists = lock_file.is_none();
 
     map_updated
