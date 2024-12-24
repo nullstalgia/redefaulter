@@ -49,6 +49,8 @@ recording_comms = ""
 
 <sup>Because ShadowPlay doesn't have a "Use Windows' Default Device" option for whatever reason.</sup>
 
+<sup>Only supports GeForce Experience. NVIDIA App uses `MessageBus`, which requires further investigation.</sup>
+
 [^1]: Not the Recording Communications device.
 
 ## Profiles
@@ -128,4 +130,6 @@ If you just want to stack sets of desired devices regardless of running apps, yo
 process = "*"
 ```
 
-# CLI Args (Under Construction)
+# CLI Args
+
+### (Under Construction)
