@@ -94,7 +94,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for TrayDevice<'a> {
     }
 }
 
-impl<'a> Serialize for TrayDevice<'a> {
+impl Serialize for TrayDevice<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
