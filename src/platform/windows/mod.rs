@@ -241,7 +241,8 @@ impl AudioNightmare {
         let endpoint: IMMEndpoint = device.cast()?;
         let direction: Direction = unsafe { endpoint.GetDataFlow()? }.try_into()?;
         info!("New {direction:?} device!");
-        let device: Device = Device::custom(device, direction);
+        // Using unsafe constructor since it's identical logic and saves a call for the direction printing
+        let device: Device = unsafe { Device::from_raw(device, direction) };
 
         if !known_to_be_active {
             let state = device.get_state()?;
