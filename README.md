@@ -1,14 +1,18 @@
 # redefaulter
 
+[![Build](https://github.com/nullstalgia/redefaulter/actions/workflows/build.yml/badge.svg)](https://github.com/nullstalgia/redefaulter/actions/workflows/build.yml)
+
 ### Since Microsoft doesn't know what a default device means.
 
 #### Redefaulter in action:
 
-https://github.com/user-attachments/assets/1cf8cc42-9281-49fd-9198-d92609858934
+https://github.com/user-attachments/assets/06ab6596-db4c-45d7-953e-86b15a0a34b7
+
+https://github.com/user-attachments/assets/6d256c27-b104-4c37-8c68-2213b493d137
 
 ## Features
 - Lets you enforce a chosen set of Default Playback/Recording devices.
-- Option to have the Recording Communications device *always* follow the Default Recording device.
+- Option to have the Communications devices *always* follow the Default audio device.
 - Create Profiles to change desired devices based on what applications are running.
 - Robust tray menu for configuration.
 - (Experimental!) ShadowPlay Support!
@@ -42,6 +46,11 @@ recording_comms = ""
 
 - `unify_communications_devices` - Any actions a profile takes towards a role, will also apply to the Communications variant of it.
   - When enabled, **all** communications entries are ignored. (Any higher priority profile entries that change only communications device will be ignored.)
+  - Note: Without any profiles or preferred devices set, Redefaulter will still ensure the Communications device follows the Default device!
+
+Demo (no active profiles and no preferred devices):
+
+https://github.com/user-attachments/assets/58f64e59-afca-41e3-89d2-863a4821bf67
 
 ### ShadowPlay Support (Experimental!)
 
