@@ -314,6 +314,20 @@ impl App {
                 self.settings.save(&self.config_path)?;
                 self.endpoints
                     .update_config(&self.settings.devices.platform);
+
+                // Since we don't want to wait for another event to make us check for this later.
+                #[cfg(windows)]
+                if id
+                    == self
+                        .settings
+                        .devices
+                        .platform
+                        .unify_communications_devices_menu_id()
+                {
+                    self.change_devices_if_needed()?;
+                    self.update_tray_menu()?;
+                }
+
                 self.update_tray_menu()?;
                 // debug!("{:#?}", self.settings.platform);
             }
