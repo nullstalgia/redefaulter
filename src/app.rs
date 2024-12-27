@@ -17,7 +17,7 @@ use tao::{
     event_loop::{ControlFlow, EventLoopProxy},
 };
 use tracing::*;
-use tray_icon::{Icon, TrayIcon, TrayIconEventReceiver};
+use tray_icon::{Icon, TrayIcon};
 
 use crate::{
     errors::{AppResult, RedefaulterError},
@@ -230,7 +230,6 @@ impl App {
         event: Event<CustomEvent>,
         control_flow: &mut ControlFlow,
         menu_channel: &MenuEventReceiver,
-        tray_channel: &TrayIconEventReceiver,
     ) -> AppResult<()> {
         if self.process_watcher_handle.is_finished() {
             let result = self.process_watcher_handle.take().join();
@@ -296,15 +295,11 @@ impl App {
             }
             _ => (),
         }
-        if let Ok(event) = menu_channel.try_recv() {
+        while let Ok(event) = menu_channel.try_recv() {
             debug!("Menu Event: {event:?}");
             let t = Instant::now();
             self.handle_tray_menu_event(event, control_flow)?;
             debug!("Tray event handling took {:?}", t.elapsed());
-        }
-
-        if let Ok(_event) = tray_channel.try_recv() {
-            // debug!("Tray Event: {event:?}");
         }
 
         // if let Some(updates) = self.updates.as_ref() {

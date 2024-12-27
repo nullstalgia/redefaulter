@@ -23,7 +23,7 @@ use popups::fatal_error_popup;
 
 use std::path::PathBuf;
 use tray_icon::menu::MenuEvent;
-use tray_icon::TrayIconEvent;
+use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
 use color_eyre::eyre::Result;
 
@@ -112,14 +112,42 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         }
     };
 
+    // The only event we really care to have our own reaction for is
+    // middle-clicking the tray icon in order to open the "Sounds" menu.
+    // If we need to do more, then I should pretty this up.
+    #[cfg(windows)]
+    {
+        TrayIconEvent::set_event_handler(Some(|event| {
+            debug!("Tray Event: {event:?}");
+            use TrayIconEvent::*;
+            match event {
+                // On middle-click, open the device selection menu, called "Sounds" by newer
+                // versions of Windows.
+                Click {
+                    button: MouseButton::Middle,
+                    button_state: MouseButtonState::Down,
+                    ..
+                } => {
+                    let spawn_result = std::process::Command::new("control.exe")
+                        .arg("mmsys.cpl")
+                        .spawn();
+
+                    if let Err(e) = spawn_result {
+                        eprintln!("Failed to open Sound settings menu: {}", e);
+                    }
+                }
+                _ => (),
+            }
+        }));
+    }
+
     let menu_channel = MenuEvent::receiver();
-    let tray_channel = TrayIconEvent::receiver();
     // Starting off at DEBUG, and setting to whatever user has defined
     reload_handle_file.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
     reload_handle_stdout.modify(|layer| *layer.filter_mut() = app.settings.get_log_level())?;
 
     event_loop.run(move |event, _, control_flow| {
-        if let Err(e) = app.handle_tao_event(event, control_flow, menu_channel, tray_channel) {
+        if let Err(e) = app.handle_tao_event(event, control_flow, menu_channel) {
             error!("Fatal error! {e}");
             // If we get an error, try to gracefully hide the tray icon and go back to normal default devices.
             _ = app.kill_tray_menu();
