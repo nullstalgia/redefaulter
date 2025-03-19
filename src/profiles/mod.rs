@@ -26,7 +26,49 @@ pub struct AppOverride {
 }
 
 #[derive(Debug)]
+pub enum TempOverride {
+    None,
+    PauseActions,
+    Override(OsString),
+}
+
+impl TempOverride {
+    /// Returns `true` if the temporary override is currently set to pause actions.
+    ///
+    /// Returns `false` if no override is set, or if it's an actual profile.
+    pub fn is_paused(&self) -> bool {
+        matches!(&self, TempOverride::PauseActions)
+    }
+    /// Returns `true` if no override is set.
+    ///
+    /// Returns `false` if the override is set to a profile or to pause actions.
+    pub fn is_none(&self) -> bool {
+        matches!(&self, TempOverride::None)
+    }
+    /// Returns a reference to the overridden profile if one is set
+    ///
+    /// Otherwise, returns `None`.
+    pub fn get_profile(&self) -> Option<&OsString> {
+        match self {
+            Self::Override(profile) => Some(profile),
+            _ => None,
+        }
+    }
+    pub fn set_profile<S: Into<OsString>>(&mut self, profile: S) {
+        *self = Self::Override(profile.into());
+    }
+    pub fn set_paused(&mut self) {
+        *self = Self::PauseActions;
+    }
+    pub fn clear(&mut self) {
+        *self = Self::None;
+    }
+}
+
+#[derive(Debug)]
 pub struct Profiles {
+    pub temporary_override: TempOverride,
+
     inner: BTreeMap<OsString, AppOverride>,
     active: BTreeSet<OsString>,
     processes: Arc<DashMap<u32, Process>>,
@@ -39,6 +81,7 @@ impl Profiles {
         let profiles = Self {
             inner: BTreeMap::new(),
             active: BTreeSet::new(),
+            temporary_override: TempOverride::None,
             processes,
         };
 
@@ -48,6 +91,8 @@ impl Profiles {
     ///
     /// If an error occurs, the previous profiles are retained.
     pub fn load_from_default_dir(&mut self) -> AppResult<()> {
+        self.temporary_override = TempOverride::None;
+
         let dir = PathBuf::from(PROFILES_PATH);
         if !dir.exists() {
             self.inner.clear();
@@ -156,32 +201,10 @@ impl Profiles {
     ///
     /// Only need to call this when processes change, not audio endpoints.
     pub fn update_active_profiles(&mut self, force_update: bool) -> bool {
-        let mut active_profiles = BTreeSet::new();
-        let total_profiles = self.inner.len();
-        // Checking for wildcard ("*"-only) profiles
-        let wildcard_any_process = Path::new("*");
-        for (profile_name, profile) in self.inner.iter() {
-            if profile.process_path == wildcard_any_process {
-                active_profiles.insert(profile_name);
-            }
-        }
-
-        for process in self.processes.iter() {
-            if active_profiles.len() == total_profiles {
-                break;
-            }
-            for (profile_name, profile) in self.inner.iter() {
-                if active_profiles.contains(profile_name) {
-                    continue;
-                }
-                if process.profile_matches(profile) {
-                    active_profiles.insert(profile_name);
-                    // Not breaking loop to allow other profiles
-                    // to match on the process
-                    // break;
-                }
-            }
-        }
+        let active_profiles = match &self.temporary_override {
+            TempOverride::Override(temporary_override) => BTreeSet::from([temporary_override]),
+            _ => determine_active_profiles(&self.inner, self.processes.as_ref()),
+        };
 
         let new_profiles = active_profiles;
         let length_changed = new_profiles.len() != self.active.len();
@@ -220,6 +243,43 @@ impl Profiles {
             }
         })
     }
+    pub fn iter_all_profiles(&self) -> impl DoubleEndedIterator<Item = (&OsString, &AppOverride)> {
+        self.inner.iter()
+    }
+}
+
+#[inline]
+fn determine_active_profiles<'a>(
+    all_profiles: &'a BTreeMap<OsString, AppOverride>,
+    running_processes: &'a DashMap<u32, Process>,
+) -> BTreeSet<&'a OsString> {
+    let mut active_profiles = BTreeSet::new();
+    let total_profiles = all_profiles.len();
+    // Checking for wildcard ("*"-only) profiles
+    let wildcard_any_process = Path::new("*");
+    for (profile_name, profile) in all_profiles.iter() {
+        if profile.process_path == wildcard_any_process {
+            active_profiles.insert(profile_name);
+        }
+    }
+
+    for process in running_processes.iter() {
+        if active_profiles.len() == total_profiles {
+            break;
+        }
+        for (profile_name, profile) in all_profiles.iter() {
+            if active_profiles.contains(profile_name) {
+                continue;
+            }
+            if process.profile_matches(profile) {
+                active_profiles.insert(profile_name);
+                // Not breaking loop to allow other profiles
+                // to match on the process
+                // break;
+            }
+        }
+    }
+    active_profiles
 }
 
 impl From<DeviceSet<ConfigEntry>> for AppOverride {

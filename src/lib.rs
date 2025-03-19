@@ -112,6 +112,23 @@ pub fn run(args: TopLevelCmd) -> Result<()> {
         }
     };
 
+    // Attempts to detach the console window and hide it if it's present.
+    // TODO Move into config option
+    // #[cfg(windows)]
+    // {
+    //     use windows::Win32::System::Console::{FreeConsole, GetConsoleWindow};
+    //     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+    //     // Notable mention, Console::AllocConsole
+    //     unsafe {
+    //         // Seeing if we can hide the Window itself, if not then we just move on as-is.
+    //         if ShowWindow(GetConsoleWindow(), SW_HIDE).as_bool() {
+    //             if let Err(e) = FreeConsole() {
+    //                 error!("Failed to hide console window! {e}")
+    //             }
+    //         }
+    //     }
+    // }
+
     // The only event we really care to have our own reaction for is
     // middle-clicking the tray icon in order to open the "Sounds" menu.
     // If we need to do more, then I'll expand this.

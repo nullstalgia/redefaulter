@@ -13,7 +13,7 @@ use crate::{
     errors::AppResult,
     platform::{ConfigDevice, DeviceRole, DiscoveredDevice},
     popups::executable_file_picker,
-    profiles::{AppOverride, PROFILES_PATH},
+    profiles::{AppOverride, TempOverride, PROFILES_PATH},
     tray_menu::TrayDevice,
     updates::UpdateState,
 };
@@ -26,6 +26,10 @@ pub mod common_ids {
 
     pub const NEW_SAVE_NAME: &str = "new-name";
     pub const NEW_SAVE_PATH: &str = "new-path";
+
+    pub const DISABLE_OVERRIDE_ID: &str = "override-disable";
+    pub const PAUSE_OVERRIDE_ID: &str = "override-pause";
+    pub const OVERRIDE_PREFIX: &str = "override";
 
     pub const AUTO_LAUNCH_ID: &str = "auto-launch";
 
@@ -140,22 +144,43 @@ impl App {
             let text = "No Profiles Loaded!";
             menu.append(&MenuItem::new(text, false, None))?;
         } else {
+            let paused_prefix = if self.profiles.temporary_override.is_paused() {
+                "(Paused) "
+            } else {
+                ""
+            };
+
             // Profile iters are reversed to try to visually
             // represent each profile's priority
             if active_profiles > 0 {
-                let text = format!("Active Profiles ({active_profiles}/{total_profiles}):");
-                let item = MenuItem::new(text, false, None);
+                let text = match &self.profiles.temporary_override {
+                    TempOverride::Override(_) => "Profile Override Active:".to_string(),
+                    _ => format!(
+                        "{paused_prefix}Active Profiles ({active_profiles}/{total_profiles}):"
+                    ),
+                };
+                let item =
+                    self.build_temp_override_menu(self.profiles.iter_all_profiles().rev(), &text)?;
                 menu.append(&item)?;
                 self.append_profiles(self.profiles.iter_active_profiles().rev(), &menu)?;
             }
             if inactive_profiles == total_profiles && self.settings.profiles.hide_inactive {
-                let text = format!("No Profiles Active ({total_profiles} loaded)");
-                menu.append(&MenuItem::new(text, false, None))?;
-            } else if inactive_profiles > 0 && !self.settings.profiles.hide_inactive {
-                // menu.append(&PredefinedMenuItem::separator())?;
-                let text = format!("Inactive Profiles ({inactive_profiles}/{total_profiles}):");
-                let item = MenuItem::new(text, false, None);
+                let text = format!("{paused_prefix}No Profiles Active ({total_profiles} loaded)");
+                let item =
+                    self.build_temp_override_menu(self.profiles.iter_all_profiles().rev(), &text)?;
                 menu.append(&item)?;
+            } else if inactive_profiles > 0 && !self.settings.profiles.hide_inactive {
+                let text = format!(
+                    "{paused_prefix}Inactive Profiles ({inactive_profiles}/{total_profiles}):"
+                );
+                if active_profiles == 0 {
+                    let item = self
+                        .build_temp_override_menu(self.profiles.iter_all_profiles().rev(), &text)?;
+                    menu.append(&item)?;
+                } else {
+                    let item = MenuItem::new(text, false, None);
+                    menu.append(&item)?;
+                }
                 self.append_profiles(self.profiles.iter_inactive_profiles().rev(), &menu)?;
             }
         }
@@ -177,12 +202,78 @@ impl App {
 
         Ok(menu)
     }
+    fn build_temp_override_menu<'a, I>(&'a self, profiles: I, text: &str) -> AppResult<Submenu>
+    where
+        I: DoubleEndedIterator<Item = (&'a OsString, &'a AppOverride)>,
+    {
+        let mut profile_items: Vec<Box<dyn IsMenuItem>> = Vec::new();
+
+        let no_override_set = self.profiles.temporary_override.is_none();
+        let no_override = CheckMenuItem::with_id(
+            DISABLE_OVERRIDE_ID,
+            "No Temporary Override",
+            true,
+            no_override_set,
+            None,
+        );
+
+        let pause_override_set = self.profiles.temporary_override.is_paused();
+        let pause_override = CheckMenuItem::with_id(
+            PAUSE_OVERRIDE_ID,
+            "Pause Redefaulter's actions",
+            true,
+            pause_override_set,
+            None,
+        );
+
+        let current_override_profile = self.profiles.temporary_override.get_profile();
+
+        for (profile_name, _) in profiles {
+            let Some(profile_name_str) = profile_name.to_str() else {
+                let incomplete_item =
+                    CheckMenuItem::new("Invalid UTF-8 Filename!", false, false, None);
+                profile_items.push(Box::new(incomplete_item));
+                continue;
+            };
+            let id = format!("{OVERRIDE_PREFIX}|{profile_name_str}");
+            let checked = if let Some(current_override) = current_override_profile {
+                current_override == profile_name
+            } else {
+                false
+            };
+            let item = CheckMenuItem::with_id(id, profile_name_str, true, checked, None);
+            profile_items.push(Box::new(item));
+        }
+
+        assert!(!profile_items.is_empty());
+
+        profile_items.insert(
+            0,
+            Box::new(MenuItem::new("Select a temporary override:", false, None)),
+        );
+
+        let submenu = SubmenuBuilder::new()
+            .enabled(true)
+            .text(text)
+            .item(&pause_override)
+            .item(&PredefinedMenuItem::separator())
+            .item(&no_override)
+            .item(&PredefinedMenuItem::separator())
+            .items(
+                &profile_items
+                    .iter()
+                    .map(|item| item.as_ref())
+                    .collect::<Vec<_>>(),
+            )
+            .build()?;
+
+        Ok(submenu)
+    }
     /// Generates and appends submenus to edit and view profiles
-    fn append_profiles<'a, I: DoubleEndedIterator<Item = (&'a OsString, &'a AppOverride)>>(
-        &'a self,
-        profiles: I,
-        menu: &Menu,
-    ) -> AppResult<()> {
+    fn append_profiles<'a, I>(&'a self, profiles: I, menu: &Menu) -> AppResult<()>
+    where
+        I: DoubleEndedIterator<Item = (&'a OsString, &'a AppOverride)>,
+    {
         for (profile_name, profile) in profiles {
             let Some(profile_name_str) = profile_name.to_str() else {
                 let incomplete_item = SubmenuBuilder::new()
@@ -357,6 +448,30 @@ impl App {
 
                 self.update_tray_menu()?;
             }
+            override_command if id.starts_with(OVERRIDE_PREFIX) => {
+                match override_command {
+                    DISABLE_OVERRIDE_ID => {
+                        self.profiles.temporary_override.clear();
+                    }
+                    // Allow clicking on the checked "Pause Redefaulter" to uncheck it
+                    PAUSE_OVERRIDE_ID if self.profiles.temporary_override.is_paused() => {
+                        self.profiles.temporary_override.clear();
+                    }
+                    PAUSE_OVERRIDE_ID => {
+                        self.profiles.temporary_override.set_paused();
+                    }
+                    override_command => {
+                        let profile_name = override_command
+                            .split_once('|')
+                            .map(|(_, second_half)| second_half)
+                            .expect("override command given without profile");
+                        self.profiles.temporary_override.set_profile(profile_name);
+                    }
+                };
+                self.update_active_profiles(false)?;
+                self.change_devices_if_needed()?;
+                self.update_tray_menu()?;
+            }
             update_command if id.starts_with(UPDATE_PREFIX) => match update_command {
                 UPDATE_DISMISS => {
                     _ = self.updates.take();
@@ -461,7 +576,7 @@ impl App {
             ))
             .item(&MenuItem::with_id(
                 NEW_SAVE_PATH,
-                "...with Full Path",
+                "...with Full Process Path",
                 true,
                 None,
             ))

@@ -181,8 +181,18 @@ impl App {
     /// Starting from the lowest priority, lays all of their desired devices
     /// on top of each other, discarding any devices that aren't connected to the system.
     ///
-    /// Returns None if the resulting devices are the same as the current de.
+    /// Returns `None` if the resulting devices are the same as the current devices,
+    /// or if the user has actions temporarily paused.
     pub fn get_damaged_devices(&self, only_config_default: bool) -> Option<DeviceSet<Discovered>> {
+        // If the user has the pause override active, we shouldn't trigger
+        // any device change actions.
+        //
+        // Noted side effect: If the user is closing the app and has actions paused,
+        // we won't set devices back to their configured defaults.
+        if self.profiles.temporary_override.is_paused() {
+            return None;
+        }
+
         let config_default_once = std::iter::once(&self.settings.devices.platform.default_devices);
 
         let profile_overrides = self
