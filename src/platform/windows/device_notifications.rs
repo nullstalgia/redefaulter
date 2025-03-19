@@ -5,12 +5,11 @@ use wasapi::{Direction, Role};
 use windows::{
     core::{implement, PCWSTR},
     Win32::{
-        Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, WIN32_ERROR},
+        Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, PROPERTYKEY, WIN32_ERROR},
         Media::Audio::{
             EDataFlow, ERole, IMMDeviceEnumerator, IMMNotificationClient,
             IMMNotificationClient_Impl, DEVICE_STATE,
         },
-        UI::Shell::PropertiesSystem::PROPERTYKEY,
     },
 };
 
@@ -48,7 +47,7 @@ pub enum WindowsAudioNotification {
 // Bit of a circular dependency, not a fan.
 struct AppEventHandlerClient(AppEventProxy);
 
-impl IMMNotificationClient_Impl for AppEventHandlerClient {
+impl IMMNotificationClient_Impl for AppEventHandlerClient_Impl {
     fn OnDeviceStateChanged(
         &self,
         pwstrdeviceid: &PCWSTR,

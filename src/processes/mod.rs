@@ -3,12 +3,14 @@ use crate::errors::{AppResult, RedefaulterError};
 use crate::profiles::AppOverride;
 
 use dashmap::DashMap;
-use fs_err::{self as fs};
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use tracing::*;
+use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE};
+use windows::Win32::System::Threading::CreateMutexA;
+use windows_core::s;
 use wmi::*;
 
 // Inspired by https://users.rust-lang.org/t/watch-for-windows-process-creation-in-rust/98603/2
@@ -81,7 +83,7 @@ impl Process {
 /// notifying the supplied EventLoopProxy when any change occurs.
 pub fn process_event_loop(
     process_map: Arc<DashMap<u32, Process>>,
-    map_updated: Sender<(usize, Option<LockFile>)>,
+    map_updated: Sender<usize>,
     event_proxy: AppEventProxy,
 ) -> AppResult<()> {
     let wmi_con = WMIConnection::new(COMLibrary::new()?)?;
@@ -93,48 +95,9 @@ pub fn process_event_loop(
         process_map.insert(process.process_id, process);
     }
 
-    // let exe_path = std::env::current_exe()?;
-    // let user_dir = get_user_dir().expect("Failed to get local user dir");
-    let temp_dir = std::env::temp_dir();
-    let lock_file_path = {
-        // let exe_name = exe_path.file_stem().unwrap();
-        // let temp_path = user_dir.join(exe_name);
-        // temp_path.with_extension("lock")
-
-        // Maybe hardcoded in env::temp_dir is better to *ensure* no duplicates are allowed.
-        temp_dir.join("redefaulter.lock")
-    };
-
-    let lock_file = if lock_file_path.exists() {
-        let contents = fs::read_to_string(&lock_file_path)?;
-        let pid = contents
-            .trim()
-            .parse::<u32>()
-            .map_err(|_| RedefaulterError::ParseLockFile)?;
-
-        let matches_our_pid = pid == std::process::id();
-        let another_instance_running =
-            !matches_our_pid && process_map.iter().any(|p| p.process_id == pid);
-
-        if another_instance_running {
-            None
-        } else {
-            Some(LockFile::build(&lock_file_path)?)
-        }
-    } else {
-        Some(LockFile::build(&lock_file_path)?)
-    };
-
-    // If we didn't make our own lock file, we shouldn't keep running.
-    let instance_already_exists = lock_file.is_none();
-
     map_updated
-        .send((process_map.len(), lock_file))
+        .send(process_map.len())
         .map_err(|_| RedefaulterError::ProcessUpdate)?;
-
-    if instance_already_exists {
-        return Ok(());
-    }
 
     let query = concat!(
         // Get events
@@ -230,24 +193,29 @@ fn fix_system32_paths(input: &mut Process) {
 }
 
 pub struct LockFile {
-    // current_pid: u32,
-    path: PathBuf,
+    handle: HANDLE,
 }
 
 impl LockFile {
-    fn build(path: &Path) -> AppResult<Self> {
-        let current_pid = std::process::id();
-        let path = path.to_owned();
-        fs::write(&path, current_pid.to_string())?;
-        Ok(Self {
-            // current_pid,
-            path,
-        })
+    pub fn build() -> AppResult<Self> {
+        let app_mutex = unsafe { CreateMutexA(None, true, s!("Global\\RedefaulterLock")) }?;
+
+        match unsafe { GetLastError() }.ok() {
+            Ok(_) => (),
+            Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => {
+                return Err(RedefaulterError::AlreadyRunning);
+            }
+            Err(e) => return Err(e.into()),
+        }
+
+        Ok(Self { handle: app_mutex })
     }
 }
 
 impl Drop for LockFile {
     fn drop(&mut self) {
-        fs::remove_file(&self.path).expect("Failed to remove lock file");
+        if let Err(e) = unsafe { CloseHandle(self.handle) } {
+            error!("Failed to drop app mutex! {e}");
+        }
     }
 }

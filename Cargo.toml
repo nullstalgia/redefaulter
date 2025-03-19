@@ -33,7 +33,7 @@ serde_json = "1.0.132"
 regex-lite = "0.1.6"
 dashmap = "6.1.0"
 same-file = "1.0.6"
-tao = "0.30.3"
+tao = "0.31.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "chrono"] }
 tracing-appender = "0.2"
@@ -59,9 +59,9 @@ serde-inline-default = "0.2.2"
 # confique = { version = "0.3.0", features = ["toml"] }
 
 [target.'cfg(windows)'.dependencies]
-wasapi = { git = "https://github.com/nullstalgia/wasapi-rs", branch = "feat/usability-improvements" }
-windows-core = { version = "0.57.0" }
-windows-result = "0.2.0"
+wasapi = "0.16.0"
+windows-core = "0.59.0"
+windows-result = "0.3.0"
 wmi = "0.14.0"
 win-msgbox = "0.2.1"
 self_update = { version = "0.41.0", features = [
@@ -71,24 +71,8 @@ self_update = { version = "0.41.0", features = [
 shadowplay = { path = "shadowplay-api-rs" }
 
 [target.'cfg(windows)'.dependencies.windows]
-version = "0.57.0"
-features = [
-    "implement",
-    "Win32_Devices_FunctionDiscovery",
-    "Win32_Foundation",
-    "Win32_Graphics_Gdi",
-    "Win32_Media_Audio_Endpoints",
-    "Win32_Media_Audio",
-    "Win32_Security",
-    "Win32_System_Com_StructuredStorage",
-    "Win32_System_Com",
-    "Win32_System_Console",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Registry",
-    "Win32_System_SystemInformation",
-    "Win32_System_Threading",
-    "Win32_UI_Shell_PropertiesSystem",
-]
+version = "0.59.0"
+features = ["Win32_System_Console", "Win32_UI_WindowsAndMessaging"]
 
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "1.4"

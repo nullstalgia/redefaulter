@@ -84,12 +84,14 @@ impl App {
         let map_clone = Arc::clone(&processes);
         let proxy_clone = event_proxy.clone();
 
+        let lock_file = LockFile::build()?;
+
         let process_watcher_handle = thread::spawn(move || {
             processes::process_event_loop(map_clone, process_tx, proxy_clone)
         });
 
-        let (initial_size, lock_file) = match process_rx.recv_timeout(Duration::from_secs(3)) {
-            Ok((size, file)) => (size, file),
+        let initial_size = match process_rx.recv_timeout(Duration::from_secs(3)) {
+            Ok(size) => size,
             Err(RecvTimeoutError::Timeout) => {
                 return Err(RedefaulterError::ProcessWatcherSetup("Timeout".to_string()));
             }
@@ -98,10 +100,6 @@ impl App {
                 let output = format!("{result:?}");
                 return Err(RedefaulterError::ProcessWatcherSetup(output));
             }
-        };
-
-        let Some(lock_file) = lock_file else {
-            return Err(RedefaulterError::AlreadyRunning);
         };
 
         assert_eq!(initial_size, processes.len());
