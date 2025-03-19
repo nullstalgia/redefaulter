@@ -29,6 +29,7 @@ pub mod common_ids {
 
     pub const DISABLE_OVERRIDE_ID: &str = "override-disable";
     pub const PAUSE_OVERRIDE_ID: &str = "override-pause";
+    pub const PREFERRED_DEFAULTS_OVERRIDE_ID: &str = "override-preferred";
     pub const OVERRIDE_PREFIX: &str = "override";
 
     pub const AUTO_LAUNCH_ID: &str = "auto-launch";
@@ -247,6 +248,19 @@ impl App {
 
         assert!(!profile_items.is_empty());
 
+        // Adding an option to switch to the Platform Settings default if they're set
+        if !self.settings.devices.platform.default_devices.is_empty() {
+            let item = CheckMenuItem::with_id(
+                PREFERRED_DEFAULTS_OVERRIDE_ID,
+                "Force Preferred Defaults",
+                true,
+                self.profiles.temporary_override.is_preferred_defaults(),
+                None,
+            );
+            profile_items.insert(0, Box::new(item));
+        }
+
+        // Title for the section with the overrides
         profile_items.insert(
             0,
             Box::new(MenuItem::new("Select a temporary override:", false, None)),
@@ -459,6 +473,9 @@ impl App {
                     }
                     PAUSE_OVERRIDE_ID => {
                         self.profiles.temporary_override.set_paused();
+                    }
+                    PREFERRED_DEFAULTS_OVERRIDE_ID => {
+                        self.profiles.temporary_override.set_prefer_defaults();
                     }
                     override_command => {
                         let profile_name = override_command

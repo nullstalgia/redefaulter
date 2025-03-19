@@ -29,6 +29,7 @@ pub struct AppOverride {
 pub enum TempOverride {
     None,
     PauseActions,
+    PreferredDefaults,
     Override(OsString),
 }
 
@@ -45,6 +46,12 @@ impl TempOverride {
     pub fn is_none(&self) -> bool {
         matches!(&self, TempOverride::None)
     }
+    /// Returns `true` if no override is set.
+    ///
+    /// Returns `false` if the override is set to a profile or to pause actions.
+    pub fn is_preferred_defaults(&self) -> bool {
+        matches!(&self, TempOverride::PreferredDefaults)
+    }
     /// Returns a reference to the overridden profile if one is set
     ///
     /// Otherwise, returns `None`.
@@ -56,6 +63,9 @@ impl TempOverride {
     }
     pub fn set_profile<S: Into<OsString>>(&mut self, profile: S) {
         *self = Self::Override(profile.into());
+    }
+    pub fn set_prefer_defaults(&mut self) {
+        *self = Self::PreferredDefaults;
     }
     pub fn set_paused(&mut self) {
         *self = Self::PauseActions;
