@@ -368,7 +368,6 @@ impl App {
                 self.update_active_profiles(false)?;
             }
             ExitRequested => {
-                error!("aaa");
                 *control_flow = ControlFlow::Exit;
             }
             ReloadProfiles => {

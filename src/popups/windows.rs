@@ -154,16 +154,16 @@ fn first_time_impl(
     let all_devices = format_devices(&current_defaults, false);
     let unified_devices = format_devices(&current_defaults, true);
 
-    let current_device_prompt =
-        format!("Set your current devices as your preferred defaults?\n\n{all_devices}",);
+    let current_device_prompt = format!(
+        "Set your current devices as your preferred defaults?\n\n{all_devices}\nDon't worry, you can always change your preferred defaults later!",
+    );
 
     let unify_comms_prompt = format!(
-        r#"Would you like to enable "Unify Communications Devices"?
+        r#"Would you like to enable Redefaulter's "Unify Communications Devices" feature?
 
-Playback and Recording Communication devices always be forced to follow the Default Playback or Recording device.
+When enabled, Redefaulter will monitor the default Playback and Recording Communication devices, and continously match them with the normal Default Playback or Recording device.
 
-(In app override profiles, Communications devices will be ignored.)
-
+(This also applies to any per-app override profiles!)
 
 {unified_devices}"#,
     );
@@ -171,14 +171,6 @@ Playback and Recording Communication devices always be forced to follow the Defa
     type Mapper = fn(YesNoCancel) -> Option<FirstTimeChoice>;
 
     let mut prompts: Vec<(String, Mapper)> = vec![
-        (
-            "Allow Redefaulter to check for updates once during startup?".to_string(),
-            |c| match c {
-                YesNoCancel::Yes => Some(FirstTimeChoice::UpdateCheckConsent(true)),
-                YesNoCancel::No => Some(FirstTimeChoice::UpdateCheckConsent(false)),
-                _ => None,
-            },
-        ),
         (current_device_prompt, |c| match c {
             YesNoCancel::Yes => Some(FirstTimeChoice::UseCurrentDefaults),
             _ => None,
@@ -192,6 +184,14 @@ Playback and Recording Communication devices always be forced to follow the Defa
             )),
             _ => None,
         }),
+        (
+            "Allow Redefaulter to check for updates once during startup?".to_string(),
+            |c| match c {
+                YesNoCancel::Yes => Some(FirstTimeChoice::UpdateCheckConsent(true)),
+                YesNoCancel::No => Some(FirstTimeChoice::UpdateCheckConsent(false)),
+                _ => None,
+            },
+        ),
     ];
 
     if auto_launch_init {
@@ -201,7 +201,7 @@ Playback and Recording Communication devices always be forced to follow the Defa
             _ => None,
         };
         prompts.insert(
-            0,
+            2,
             (
                 "Auto Launch Redefaulter on Login?".to_string(),
                 auto_launch_prompt,
