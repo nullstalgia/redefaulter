@@ -6,7 +6,7 @@ description = "Enforce a set of Default Audio Devices on Windows, with per-app o
 keywords = ["windows", "audio"]
 categories = ["multimedia::audio"]
 repository = "https://github.com/nullstalgia/redefaulter"
-edition = "2021"
+edition = "2024"
 
 [features]
 # default = ["self-replace"]

@@ -6,7 +6,7 @@ use crate::{
     app::App,
     errors::AppResult,
     platform::{ConfigDevice, ConfigEntry, DeviceRole, DeviceSet},
-    tray_menu::{build_device_checks, label_item, DeviceSelectionType},
+    tray_menu::{DeviceSelectionType, build_device_checks, label_item},
 };
 
 impl App {
@@ -20,7 +20,9 @@ impl App {
         devices.push(Box::new(header));
 
         let build_device = |role: &DeviceRole| -> MenuItem {
-            let device = self.current_defaults.get_role(role);
+            let Some(device) = self.current_defaults.get_role(role) else {
+                return label_item("N/A (?)");
+            };
             let human_name = &device.human_name;
             // let human_name = if self.settings.behavior.always_save_generics {
             //     let config_device = self.endpoints.device_to_config_entry(device, true);
@@ -58,28 +60,28 @@ impl App {
         submenus.push(Box::new(self.tray_build_platform_device_selection(
             destination,
             &Playback,
-            &device_set.playback,
+            device_set.playback.as_ref(),
         )?));
 
         if !self.settings.devices.platform.unify_communications_devices {
             submenus.push(Box::new(self.tray_build_platform_device_selection(
                 destination,
                 &PlaybackComms,
-                &device_set.playback_comms,
+                device_set.playback_comms.as_ref(),
             )?));
         }
 
         submenus.push(Box::new(self.tray_build_platform_device_selection(
             destination,
             &Recording,
-            &device_set.recording,
+            device_set.recording.as_ref(),
         )?));
 
         if !self.settings.devices.platform.unify_communications_devices {
             submenus.push(Box::new(self.tray_build_platform_device_selection(
                 destination,
                 &RecordingComms,
-                &device_set.recording_comms,
+                device_set.recording_comms.as_ref(),
             )?));
         }
 
@@ -89,7 +91,7 @@ impl App {
         &self,
         destination: &DeviceSelectionType,
         role: &DeviceRole,
-        current: &ConfigDevice,
+        current: Option<&ConfigDevice>,
     ) -> AppResult<Submenu> {
         use wasapi::Direction::*;
 
@@ -100,11 +102,15 @@ impl App {
             Capture => &self.endpoints.recording_devices,
         };
 
-        let possibly_known_device = self.endpoints.try_find_device(
-            &direction,
-            current,
-            self.settings.devices.fuzzy_match_names,
-        );
+        let possibly_known_device = current
+            .map(|c| {
+                self.endpoints.try_find_device(
+                    &direction,
+                    c,
+                    self.settings.devices.fuzzy_match_names,
+                )
+            })
+            .flatten();
 
         let playback_device_checks = build_device_checks(
             all_devices,

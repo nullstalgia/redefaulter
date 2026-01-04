@@ -26,13 +26,13 @@ impl<State> WindowsAudioDevice<State> {
             _state: PhantomData,
         }
     }
-    pub fn clear(&mut self) {
-        self.human_name.clear();
-        self.guid.clear();
-    }
-    pub fn is_empty(&self) -> bool {
-        self.human_name.is_empty() && self.guid.is_empty()
-    }
+    // pub fn clear(&mut self) {
+    //     self.human_name.clear();
+    //     self.guid.clear();
+    // }
+    // pub fn is_empty(&self) -> bool {
+    //     self.human_name.is_empty() && self.guid.is_empty()
+    // }
 }
 
 // impl WindowsAudioDevice<Discovered> {
@@ -78,17 +78,21 @@ impl TryFrom<wasapi::Device> for DiscoveredDevice {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DeviceSet<State> {
     #[serde(default)]
-    pub playback: WindowsAudioDevice<State>,
+    pub playback: Option<WindowsAudioDevice<State>>,
     #[serde(default)]
-    pub playback_comms: WindowsAudioDevice<State>,
+    pub playback_comms: Option<WindowsAudioDevice<State>>,
     #[serde(default)]
-    pub recording: WindowsAudioDevice<State>,
+    pub recording: Option<WindowsAudioDevice<State>>,
     #[serde(default)]
-    pub recording_comms: WindowsAudioDevice<State>,
+    pub recording_comms: Option<WindowsAudioDevice<State>>,
 }
 
 impl<State> DeviceSet<State> {
-    pub fn update_role(&mut self, role: &DeviceRole, new_device: WindowsAudioDevice<State>) {
+    pub fn update_role(
+        &mut self,
+        role: &DeviceRole,
+        new_device: Option<WindowsAudioDevice<State>>,
+    ) {
         use DeviceRole::*;
         match role {
             Playback => self.playback = new_device,
@@ -99,20 +103,20 @@ impl<State> DeviceSet<State> {
     }
     pub fn clear_role(&mut self, role: &DeviceRole) {
         use DeviceRole::*;
-        match role {
-            Playback => self.playback.clear(),
-            PlaybackComms => self.playback_comms.clear(),
-            Recording => self.recording.clear(),
-            RecordingComms => self.recording_comms.clear(),
-        }
+        _ = match role {
+            Playback => self.playback.take(),
+            PlaybackComms => self.playback_comms.take(),
+            Recording => self.recording.take(),
+            RecordingComms => self.recording_comms.take(),
+        };
     }
-    pub fn get_role(&self, role: &DeviceRole) -> &WindowsAudioDevice<State> {
+    pub fn get_role(&self, role: &DeviceRole) -> Option<&WindowsAudioDevice<State>> {
         use DeviceRole::*;
         match role {
-            Playback => &self.playback,
-            PlaybackComms => &self.playback_comms,
-            Recording => &self.recording,
-            RecordingComms => &self.recording_comms,
+            Playback => self.playback.as_ref(),
+            PlaybackComms => self.playback_comms.as_ref(),
+            Recording => self.recording.as_ref(),
+            RecordingComms => self.recording_comms.as_ref(),
         }
     }
     // pub fn get_mut_role(&mut self, role: &DeviceRole) -> &mut WindowsAudioDevice<State> {
@@ -193,10 +197,10 @@ impl<State> Display for WindowsAudioDevice<State> {
 }
 
 impl<State> DeviceSet<State> {
-    pub fn is_empty(&self) -> bool {
-        self.playback.is_empty()
-            && self.playback_comms.is_empty()
-            && self.recording.is_empty()
-            && self.recording_comms.is_empty()
+    pub fn is_none(&self) -> bool {
+        self.playback.is_none()
+            && self.playback_comms.is_none()
+            && self.recording.is_none()
+            && self.recording_comms.is_none()
     }
 }

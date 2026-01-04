@@ -25,6 +25,7 @@ pub struct AppOverride {
     pub override_set: DeviceSet<ConfigEntry>,
 }
 
+// TODO, app icon variants for these
 #[derive(Debug)]
 pub enum TempOverride {
     None,

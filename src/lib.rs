@@ -198,14 +198,14 @@ fn is_portable() -> bool {
     true
 }
 
-#[cfg(not(any(debug_assertions, feature = "portable")))]
-fn is_portable() -> bool {
-    false
-}
-
 #[cfg(any(debug_assertions, feature = "portable"))]
 fn get_user_dir() -> Option<PathBuf> {
     None
+}
+
+#[cfg(not(any(debug_assertions, feature = "portable")))]
+fn is_portable() -> bool {
+    false
 }
 
 #[cfg(not(any(debug_assertions, feature = "portable")))]

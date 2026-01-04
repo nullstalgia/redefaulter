@@ -9,13 +9,13 @@ use takeable::Takeable;
 use tracing::*;
 use wasapi::*;
 use windows::{
-    core::PWSTR,
     Win32::{
         Media::Audio::*,
-        System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED},
+        System::Com::{CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx},
     },
+    core::PWSTR,
 };
-use windows_core::Interface;
+use windows_core::{HRESULT, Interface};
 
 use crate::{
     app::{AppEventProxy, CustomEvent},
@@ -36,6 +36,7 @@ mod device_ser;
 mod policy_config;
 mod shadowplay;
 
+#[derive(Debug)]
 pub struct AudioNightmare {
     /// Interface to query endpoints through
     device_enumerator: Takeable<IMMDeviceEnumerator>,
@@ -359,24 +360,44 @@ impl AudioNightmare {
             get_default_device_for_role(&target_direction, &target_role)?.try_into()?;
         Ok(default_device)
     }
+    fn get_default_device_for_role(
+        direction: &Direction,
+        role: &Role,
+    ) -> AppResult<Option<DiscoveredDevice>> {
+        match get_default_device_for_role(direction, role) {
+            Ok(device) => {
+                let device: DiscoveredDevice = device.try_into()?;
+                Ok(Some(device))
+            }
+            Err(WasapiError::Windows(e)) if e.code() == HRESULT::from_win32(0x80070490) => {
+                // No device is set for the role!
+                Ok(None)
+            }
+            Err(e) => Err(e)?,
+        }
+    }
     // Bit of a slow operation, queries Windows for all four roles individually.
     pub fn get_current_defaults(&self) -> AppResult<DeviceSet<Discovered>> {
         use wasapi::Direction::*;
         use wasapi::Role::*;
-        let playback: DiscoveredDevice =
-            get_default_device_for_role(&Render, &Console)?.try_into()?;
-        let playback_comms: DiscoveredDevice =
-            get_default_device_for_role(&Render, &Communications)?.try_into()?;
-        let recording: DiscoveredDevice =
-            get_default_device_for_role(&Capture, &Console)?.try_into()?;
-        let recording_comms: DiscoveredDevice =
-            get_default_device_for_role(&Capture, &Communications)?.try_into()?;
+
+        debug!("Getting Playback!");
+        let playback = Self::get_default_device_for_role(&Render, &Console)?;
+        debug!("Getting Playback Comms!");
+        let playback_comms = Self::get_default_device_for_role(&Render, &Communications)?;
+        debug!("Getting Recording!");
+        let recording = Self::get_default_device_for_role(&Capture, &Console)?;
+        debug!("Getting Recording Comms!");
+        let recording_comms = Self::get_default_device_for_role(&Capture, &Communications)?;
+        debug!("Got all default devices!!!");
 
         // Tacking on ShadowPlay's action here, since this runs not too frequently
         // (mainly only when devices change),
         // but enough to not lag behind.
         // Plus we just got the most recent Recording device, which is the one we want.
-        if let Some(shadowplay) = self.shadowplay.as_ref() {
+        if let Some(shadowplay) = &self.shadowplay
+            && let Some(recording) = &recording
+        {
             shadowplay.microphone_change(&recording.guid);
         }
 
@@ -413,40 +434,43 @@ impl AudioNightmare {
         fuzzy_match_names: bool,
     ) {
         use wasapi::Direction::*;
-        let update_device =
-            |direction: &Direction, actions: &mut DiscoveredDevice, desired: &ConfigDevice| {
-                if let Some(device) = self.try_find_device(direction, desired, fuzzy_match_names) {
-                    *actions = device.clone();
-                }
-            };
+        let update_device = |direction: &Direction,
+                             role_action_opt: &mut Option<DiscoveredDevice>,
+                             desired_opt: Option<&ConfigDevice>| {
+            if let Some(desired) = desired_opt
+                && let Some(device) = self.try_find_device(direction, desired, fuzzy_match_names)
+            {
+                _ = role_action_opt.insert(device.clone());
+            }
+        };
 
-        update_device(&Render, &mut actions.playback, &desired.playback);
+        update_device(&Render, &mut actions.playback, desired.playback.as_ref());
         if self.unify_communications_devices {
             actions.playback_comms = actions.playback.clone();
         } else {
             update_device(
                 &Render,
                 &mut actions.playback_comms,
-                &desired.playback_comms,
+                desired.playback_comms.as_ref(),
             );
         }
 
-        update_device(&Capture, &mut actions.recording, &desired.recording);
+        update_device(&Capture, &mut actions.recording, desired.recording.as_ref());
         if self.unify_communications_devices {
             actions.recording_comms = actions.recording.clone();
         } else {
             update_device(
                 &Capture,
                 &mut actions.recording_comms,
-                &desired.recording_comms,
+                desired.recording_comms.as_ref(),
             );
         }
     }
     /// Used after laying all active profiles on top of one another to remove any redundant actions.
     pub fn discard_healthy(&self, left: &mut DeviceSet<Discovered>, right: &DeviceSet<Discovered>) {
-        let clear_if_matching = |l: &mut DiscoveredDevice, r: &DiscoveredDevice| {
-            if l.guid == r.guid {
-                l.clear();
+        let clear_if_matching = |l: &mut Option<DiscoveredDevice>, r: &Option<DiscoveredDevice>| {
+            if l == r {
+                _ = l.take();
             }
         };
         clear_if_matching(&mut left.playback, &right.playback);
@@ -463,8 +487,10 @@ impl AudioNightmare {
             (new_devices.recording_comms, vec![Communications]),
         ];
 
-        for (device, roles) in roles.iter() {
-            if !device.guid.is_empty() {
+        for (device_opt, roles) in roles.iter() {
+            if let Some(device) = device_opt
+                && !device.guid.is_empty()
+            {
                 info!("Setting {} -> {roles:?}", device.human_name);
                 for role in roles {
                     self.set_device_role(&device.guid, role)?;
@@ -500,8 +526,8 @@ impl AudioNightmare {
     // Could probably replace this with some generic iterator over the enum variants for `DeviceRole`...
     pub fn copy_all_roles(
         &self,
-        dest: &mut DeviceSet<ConfigEntry>,
         source: &DeviceSet<Discovered>,
+        dest: &mut DeviceSet<ConfigEntry>,
         save_fuzzy_name: bool,
         save_guid: bool,
     ) {
@@ -509,9 +535,9 @@ impl AudioNightmare {
         let roles = [Playback, PlaybackComms, Recording, RecordingComms];
 
         for role in roles {
-            let real_device = source.get_role(&role);
-            let config_device =
-                self.device_to_config_entry(real_device, save_fuzzy_name, save_guid);
+            let real_device_opt = source.get_role(&role);
+            let config_device = real_device_opt
+                .map(|real| self.device_to_config_entry(real, save_fuzzy_name, save_guid));
             dest.update_role(&role, config_device);
         }
     }
@@ -528,7 +554,7 @@ impl AudioNightmare {
             .ok_or_else(|| RedefaulterError::DeviceNotFound(guid.to_string()))?;
 
         let new_device = self.device_to_config_entry(real_device, save_fuzzy_name, save_guid);
-        entry.update_role(role, new_device);
+        entry.update_role(role, Some(new_device));
 
         Ok(())
     }

@@ -2,8 +2,8 @@
 mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::{
-    device_notifications::WindowsAudioNotification as AudioEndpointNotification, AudioNightmare,
-    ConfigDevice, DeviceRole, DeviceSet, DiscoveredDevice, PlatformSettings,
+    AudioNightmare, ConfigDevice, DeviceRole, DeviceSet, DiscoveredDevice, PlatformSettings,
+    device_notifications::WindowsAudioNotification as AudioEndpointNotification,
 };
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// A device tagged with this could be unreachable, and thus
 /// needs to be checked before setting any role to it.
 pub struct ConfigEntry;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 /// A device tagged with this is known to be connected and available
 pub struct Discovered;
 

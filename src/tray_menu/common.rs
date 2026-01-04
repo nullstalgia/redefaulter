@@ -4,8 +4,8 @@ use muda::{CheckMenuItem, IsMenuItem, Submenu};
 use tao::event_loop::ControlFlow;
 use tracing::*;
 use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     Icon, TrayIcon, TrayIconBuilder,
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
 };
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
     errors::AppResult,
     platform::{ConfigDevice, DeviceRole, DiscoveredDevice},
     popups::executable_file_picker,
-    profiles::{AppOverride, TempOverride, PROFILES_PATH},
+    profiles::{AppOverride, PROFILES_PATH, TempOverride},
     tray_menu::TrayDevice,
     updates::UpdateState,
 };
@@ -52,7 +52,7 @@ pub const TOOLTIP_PREFIX: &str = "Redefaulter";
 
 use common_ids::*;
 
-use super::{tray_update_submenu, DeviceSelectionType};
+use super::{DeviceSelectionType, tray_update_submenu};
 
 impl App {
     pub fn build_tray_late(&mut self) -> AppResult<TrayIcon> {
@@ -249,7 +249,7 @@ impl App {
         assert!(!profile_items.is_empty());
 
         // Adding an option to switch to the Platform Settings default if they're set
-        if !self.settings.devices.platform.default_devices.is_empty() {
+        if !self.settings.devices.platform.default_devices.is_none() {
             let item = CheckMenuItem::with_id(
                 PREFERRED_DEFAULTS_OVERRIDE_ID,
                 "Force Preferred Defaults",
@@ -621,7 +621,7 @@ pub fn build_device_checks(
     all_devices: &BTreeMap<String, DiscoveredDevice>,
     selection_type: &DeviceSelectionType,
     role: &DeviceRole,
-    current_device: &ConfigDevice,
+    current_device: Option<&ConfigDevice>,
     current_as_discovered: Option<&DiscoveredDevice>,
 ) -> Vec<Box<dyn IsMenuItem>> {
     let mut items: Vec<Box<dyn IsMenuItem>> = Vec::new();
@@ -639,7 +639,7 @@ pub fn build_device_checks(
         none_item.to_string(),
         none_text,
         true,
-        current_device.is_empty(),
+        current_device.is_none(),
         None,
     )));
 
@@ -665,7 +665,9 @@ pub fn build_device_checks(
     }
 
     // Checking if we have a device configured but wasn't in our list of known active devices
-    if !current_device.is_empty() && !device_found {
+    if let Some(current_device) = current_device
+        && !device_found
+    {
         items.push(Box::new(PredefinedMenuItem::separator()) as Box<dyn IsMenuItem>);
         // Giving this an ignore id, since if someone clicks it
         // it unchecks the listing in the tray, when instead the user

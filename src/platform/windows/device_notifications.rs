@@ -3,14 +3,14 @@
 use std::fmt::Debug;
 use wasapi::{Direction, Role};
 use windows::{
-    core::{implement, PCWSTR},
     Win32::{
         Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, PROPERTYKEY, WIN32_ERROR},
         Media::Audio::{
-            EDataFlow, ERole, IMMDeviceEnumerator, IMMNotificationClient,
-            IMMNotificationClient_Impl, DEVICE_STATE,
+            DEVICE_STATE, EDataFlow, ERole, IMMDeviceEnumerator, IMMNotificationClient,
+            IMMNotificationClient_Impl,
         },
     },
+    core::{PCWSTR, implement},
 };
 
 use crate::{
@@ -53,6 +53,9 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient_Impl {
         pwstrdeviceid: &PCWSTR,
         dwnewstate: DEVICE_STATE,
     ) -> windows::core::Result<()> {
+        if pwstrdeviceid.is_null() {
+            return Ok(());
+        }
         unsafe {
             self.0
                 .send_event(CustomEvent::AudioEndpointNotification(
@@ -70,6 +73,9 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient_Impl {
     }
 
     fn OnDeviceAdded(&self, pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
+        if pwstrdeviceid.is_null() {
+            return Ok(());
+        }
         unsafe {
             self.0
                 .send_event(CustomEvent::AudioEndpointNotification(
@@ -86,6 +92,9 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient_Impl {
     }
 
     fn OnDeviceRemoved(&self, pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
+        if pwstrdeviceid.is_null() {
+            return Ok(());
+        }
         unsafe {
             self.0
                 .send_event(CustomEvent::AudioEndpointNotification(
@@ -107,6 +116,10 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient_Impl {
         role: ERole,
         pwstrdefaultdeviceid: &PCWSTR,
     ) -> windows::core::Result<()> {
+        // This can be null if the final remaining device for a role is unplugged!
+        if pwstrdefaultdeviceid.is_null() {
+            return Ok(());
+        }
         unsafe {
             let id = pwstrdefaultdeviceid
                 .to_string()
@@ -137,6 +150,7 @@ impl IMMNotificationClient_Impl for AppEventHandlerClient_Impl {
     }
 }
 
+#[derive(Debug)]
 pub struct NotificationCallbacks {
     notification_client: IMMNotificationClient,
 }

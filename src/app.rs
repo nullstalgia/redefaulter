@@ -1,8 +1,8 @@
 use std::{
     path::PathBuf,
     sync::{
-        mpsc::{self, RecvTimeoutError},
         Arc,
+        mpsc::{self, RecvTimeoutError},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -23,13 +23,15 @@ use crate::{
     errors::{AppResult, RedefaulterError},
     platform::{AudioEndpointNotification, AudioNightmare, DeviceSet, Discovered},
     popups::{
-        first_time_popups, profile_exists_popup, settings_load_failed_popup, FirstTimeChoice,
+        FirstTimeChoice, first_time_popups, profile_exists_popup, settings_load_failed_popup,
     },
     processes::{self, LockFile},
     profiles::Profiles,
     settings::Settings,
     updates::{UpdateHandle, UpdateReply, UpdateState},
 };
+
+const DEVICE_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Debug)]
 pub enum CustomEvent {
@@ -73,6 +75,7 @@ pub struct App {
     // To prevent fighting with something else messing with devices
     // changes_within_few_seconds: usize,
     // last_change: Instant,
+    next_device_poll_at: Instant,
 }
 
 // TODO check for wrestling with other apps
@@ -134,9 +137,13 @@ impl App {
         let endpoints =
             AudioNightmare::build(Some(event_proxy.clone()), Some(&settings.devices.platform))?;
 
+        debug!("Endpoints: {endpoints:?}");
+
         // let config_defaults = settings.platform.default_devices.clone();
 
         let current_defaults = endpoints.get_current_defaults()?;
+
+        debug!("Current default devices: {current_defaults:?}");
 
         let mut profiles = Profiles::build(processes)?;
 
@@ -174,6 +181,7 @@ impl App {
             update_icon: None,
             updates: Takeable::new(updates),
             auto_launch,
+            next_device_poll_at: Instant::now(),
         })
     }
     /// Given a list of profiles, will return the roles that need to be changed to fit the active profiles.
@@ -224,7 +232,7 @@ impl App {
         self.endpoints
             .discard_healthy(&mut device_actions, &self.current_defaults);
 
-        if device_actions.is_empty() {
+        if device_actions.is_none() {
             None
         } else {
             Some(device_actions)
@@ -249,12 +257,26 @@ impl App {
             let output = format!("{result:?}");
             return Err(RedefaulterError::ProcessWatcher(output));
         }
+
+        let now = Instant::now();
+        if self.next_device_poll_at.saturating_duration_since(now) == Duration::ZERO {
+            let change_detected = self.update_defaults()?;
+            let action_taken = self.change_devices_if_needed()?;
+            if change_detected || action_taken {
+                debug!("Poll noticed change!");
+                // If defaults changed or if we did some changes, update the menu.
+                self.update_tray_menu()?;
+            }
+            self.next_device_poll_at = Instant::now() + DEVICE_CHECK_INTERVAL;
+        }
+
         match event {
             // Note: If the user clicks on the icon before this event finishes,
             // the tray menu and icon will become stuck and uninteractable.
             // Might wanna open an issue about it later.
             Event::NewEvents(StartCause::Init) => {
-                *control_flow = ControlFlow::Wait;
+                let delay = Instant::now() + Duration::from_secs(3);
+                *control_flow = ControlFlow::WaitUntil(delay);
                 self.tray_menu = Some(self.build_tray_late()?);
                 self.update_active_profiles(true)?;
                 self.change_devices_if_needed()?;
@@ -270,35 +292,25 @@ impl App {
                 }
             }
             Event::UserEvent(event) => {
-                // println!("user event: {event:?}");
+                // debug!("User event: {event:?}");
                 let t = Instant::now();
                 self.handle_custom_event(event, control_flow)?;
                 debug!("Event handling took {:?}", t.elapsed());
             }
             // Timeout for an audio device reaction finished waiting
             // (nothing else right now uses WaitUntil)
-            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-                debug!("Done waiting for audio endpoint timeout!");
-                self.update_defaults()?;
-                self.change_devices_if_needed()?;
-                self.update_tray_menu()?;
-                *control_flow = ControlFlow::Wait;
-            }
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => (),
             Event::NewEvents(StartCause::WaitCancelled {
-                requested_resume, ..
-            }) => {
-                // We had a wait time, but something else came in before we could finish waiting,
-                // so just check now
-                if requested_resume.is_some() {
-                    self.update_defaults()?;
-                    self.update_tray_menu()?;
-                    *control_flow = ControlFlow::Wait;
-                }
-            }
+                requested_resume: _requested_resume,
+                ..
+            }) => (),
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
+            } => {
+                *control_flow = ControlFlow::Exit;
+                return Ok(());
+            }
             Event::LoopDestroyed => {
                 debug!("Event loop destroyed!");
                 self.kill_tray_menu();
@@ -308,18 +320,26 @@ impl App {
             }
             _ => (),
         }
+
+        // If we're about to exit, let's just bail.
+        if matches!(
+            *control_flow,
+            ControlFlow::Exit | ControlFlow::ExitWithCode(..)
+        ) {
+            return Ok(());
+        } else {
+            // Otherwise, let's set the timer for the next audio device poll.
+            *control_flow = ControlFlow::WaitUntil(
+                now + self.next_device_poll_at.saturating_duration_since(now),
+            );
+        }
+
         while let Ok(event) = menu_channel.try_recv() {
             debug!("Menu Event: {event:?}");
             let t = Instant::now();
             self.handle_tray_menu_event(event, control_flow)?;
             debug!("Tray event handling took {:?}", t.elapsed());
         }
-
-        // if let Some(updates) = self.updates.as_ref() {
-        //     if let Ok(reply) = updates.reply_rx.try_recv() {
-
-        //     }
-        // }
 
         Ok(())
     }
@@ -335,25 +355,20 @@ impl App {
             AudioEndpointNotification(notif) => {
                 // Dispatch to our platform-specific handler
                 self.endpoints.handle_endpoint_notification(notif)?;
-                *control_flow = ControlFlow::Wait;
             }
             // Handler processed event, now we can react
             AudioEndpointUpdate => {
                 // Changing default audio devices on Windows can trigger several "noisy" events back-to-back,
                 // including when we set our desired devices' roles.
                 // So instead of reacting to each event instantly (which would cause even more noise we'd react to),
-                // we wait a moment for it to settle down.
-                let delay = Instant::now() + Duration::from_secs(1);
-                debug!("Audio update! Waiting to take action...");
-                *control_flow = ControlFlow::WaitUntil(delay);
+                // we check the devices every few seconds and apply it on each cycle.
             }
             // A process has opened or closed
             ProcessesChanged => {
                 self.update_active_profiles(false)?;
-                self.change_devices_if_needed()?;
-                *control_flow = ControlFlow::Wait;
             }
             ExitRequested => {
+                error!("aaa");
                 *control_flow = ControlFlow::Exit;
             }
             ReloadProfiles => {
@@ -388,8 +403,8 @@ impl App {
             }
             FirstTimeChoice::UseCurrentDefaults => {
                 self.endpoints.copy_all_roles(
-                    &mut self.settings.devices.platform.default_devices,
                     &self.current_defaults,
+                    &mut self.settings.devices.platform.default_devices,
                     self.settings.devices.fuzzy_match_names,
                     self.settings.devices.save_guid,
                 );
@@ -414,18 +429,21 @@ impl App {
         self.settings.save(&self.config_path)?;
         Ok(())
     }
-    /// Query the OS for the current default endpoints.
-    pub fn update_defaults(&mut self) -> AppResult<()> {
-        debug!("Updating defaults!");
-        self.current_defaults = self.endpoints.get_current_defaults()?;
-        Ok(())
+    /// Query the OS for the current default endpoints, returning `true` if a change occurred.
+    pub fn update_defaults(&mut self) -> AppResult<bool> {
+        let incoming = self.endpoints.get_current_defaults()?;
+        let changed = self.current_defaults != incoming;
+        self.current_defaults = incoming;
+        Ok(changed)
     }
-    pub fn change_devices_if_needed(&mut self) -> AppResult<()> {
+    pub fn change_devices_if_needed(&mut self) -> AppResult<bool> {
         if let Some(actions) = self.get_damaged_devices(false) {
             self.endpoints.change_devices(actions)?;
             self.update_defaults()?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
     /// Meant to be run on shutdown (via error or user request) to attempt to set the default devices back
     /// to the global defaults defined in the config.

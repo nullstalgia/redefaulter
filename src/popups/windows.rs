@@ -123,7 +123,9 @@ fn format_devices(devices: &DeviceSet<Discovered>, unify_example: bool) -> Strin
     let mut buffer = String::new();
 
     let device_string = |role: &DeviceRole| -> String {
-        let device = devices.get_role(role);
+        let Some(device) = devices.get_role(role) else {
+            return format!("{role}: N/A (?)\n");
+        };
         let human_name = &device.human_name;
         format!("{role}: {human_name}\n")
     };

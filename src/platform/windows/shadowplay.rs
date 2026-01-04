@@ -5,10 +5,12 @@ use tracing::*;
 
 use crate::errors::AppResult;
 
+#[derive(Debug)]
 pub enum ShadowPlayCommand {
     ChangeMicrophone(String),
 }
 
+#[derive(Debug)]
 pub struct ShadowPlayHandle {
     command_tx: Sender<ShadowPlayCommand>,
 }

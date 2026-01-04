@@ -332,11 +332,7 @@ fn process_fields(
 }
 
 fn get_first_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
-    let mut output = None;
     for attr in attrs {
-        if output.is_some() {
-            break;
-        }
         if attr.path().is_ident("doc") {
             if let syn::Meta::NameValue(meta_name_value) = attr.meta.borrow() {
                 // Uhhhh, this can probably be done better
@@ -347,21 +343,20 @@ fn get_first_doc_comment(attrs: &[syn::Attribute]) -> Option<String> {
                     }) = meta_name_value.value
                     {
                         let comment: String = lit_str.value().trim().to_owned();
-                        output = Some(comment);
+                        return Some(comment);
                     }
-                    break;
                 }
+
                 if let syn::Expr::Lit(syn::ExprLit {
                     lit: syn::Lit::Str(ref lit_str),
                     ..
                 }) = meta_name_value.value
                 {
                     let comment: String = lit_str.value().trim().to_owned();
-                    output = Some(comment);
+                    return Some(comment);
                 }
-                break;
             }
         }
     }
-    output
+    None
 }
