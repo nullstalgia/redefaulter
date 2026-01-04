@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-use windows::{core::*, Win32::Media::Audio::ERole};
+use windows::{Win32::Media::Audio::ERole, core::*};
 
 // Yoinked from https://github.com/DvdGiessen/microphone-mute-indicator/blob/e1b291efff0a5f89bc1242cbd14bff8ddd1a52a1/src/main.rs#L133
 
@@ -26,11 +26,13 @@ impl IPolicyConfig {
     where
         P0: Param<PWSTR>,
     {
-        (Interface::vtable(self).SetDefaultEndpoint)(
-            Interface::as_raw(self),
-            wszDeviceId.param().abi(),
-            role,
-        )
+        unsafe {
+            (Interface::vtable(self).SetDefaultEndpoint)(
+                Interface::as_raw(self),
+                wszDeviceId.param().abi(),
+                role,
+            )
+        }
         .ok()
     }
 }

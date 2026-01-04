@@ -102,15 +102,10 @@ impl App {
             Capture => &self.endpoints.recording_devices,
         };
 
-        let possibly_known_device = current
-            .map(|c| {
-                self.endpoints.try_find_device(
-                    &direction,
-                    c,
-                    self.settings.devices.fuzzy_match_names,
-                )
-            })
-            .flatten();
+        let possibly_known_device = current.and_then(|c| {
+            self.endpoints
+                .try_find_device(&direction, c, self.settings.devices.fuzzy_match_names)
+        });
 
         let playback_device_checks = build_device_checks(
             all_devices,
